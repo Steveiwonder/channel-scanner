@@ -85,7 +85,12 @@ class ScanManager:
         self._mode = "sweep"  # or "focus"
         self._focus_center: int | None = None
         self._focus_span: int | None = None
-        self._sweep_pos: int = settings.scan_start_hz
+        # Sweep plan: a precomputed list of window centre frequencies that tiles
+        # the configured band. The tuner cycles through these; this guarantees
+        # the whole band is covered every pass (a single incrementing position
+        # can stall when the auto step overshoots the band edge).
+        self._sweep_centers: list[int] = []
+        self._sweep_idx: int = 0
 
         self._noise = NoiseFloorEstimator(alpha=settings.noise_floor_alpha)
         self._clusterer = ChannelClusterer(proximity_hz=self._proximity_hz())
@@ -96,6 +101,14 @@ class ScanManager:
         self.metrics = ScanMetrics()
         self._last_spectrum_emit = 0.0
         self._last_snapshot_emit = 0.0
+
+        # Stitched full-band spectrum. A swept receiver only sees one window at a
+        # time, so we keep a persistent power buffer spanning the whole band and
+        # refresh each segment as the sweep passes over it. The browser then
+        # always renders the entire band rather than a single aliased window.
+        self._band_freqs: np.ndarray | None = None
+        self._band_power: np.ndarray | None = None
+        self._band_floor: float = -120.0
 
     # ------------------------------------------------------------------ config
     @staticmethod
@@ -191,7 +204,8 @@ class ScanManager:
 
         self._noise.reset()
         self._stop_event.clear()
-        self._sweep_pos = self._config.start_hz
+        self._compute_sweep_plan()
+        self._reset_band_buffer()
         self._mode = "sweep"
 
         self._session_id = await self._repos.sessions.create(
@@ -255,6 +269,8 @@ class ScanManager:
         self._version += 1
         self._noise = NoiseFloorEstimator(alpha=new_config.noise_floor_alpha)
         self._clusterer = ChannelClusterer(proximity_hz=self._proximity_hz())
+        self._compute_sweep_plan()  # band/step/sample-rate may have changed
+        self._reset_band_buffer()
 
         if self._backend is not None:
             self._backend.set_sample_rate(new_config.sample_rate)
@@ -365,6 +381,11 @@ class ScanManager:
         now = time.monotonic()
         ts = iso_now()
         for region in regions:
+            # Windows overscan the band edges to guarantee full coverage; only
+            # report candidate channels whose centre falls within the requested
+            # band so the results stay "within a band" as configured.
+            if not (self._config.start_hz <= region.center_hz <= self._config.end_hz):
+                continue
             state = self._clusterer.ingest(region, ts)
             tracker = self._recurrence.setdefault(state.id, RecurrenceTracker(gap_seconds=1.0))
             tracker.add(utcnow().timestamp())
@@ -376,8 +397,10 @@ class ScanManager:
                 await self._persist_detection(region, state.id, ts)
                 await self._upsert_and_broadcast_channel(state, tracker, floor)
 
-        # Throttled spectrum frame (reduced bins only).
-        self._maybe_emit_spectrum(freqs, power_db, floor, center, span)
+        # Refresh this window's segment of the stitched full-band spectrum,
+        # then emit the whole band (throttled).
+        self._stitch_into_band(freqs, power_db, floor)
+        self._maybe_emit_spectrum(center, span)
         # Periodic full channel snapshot.
         await self._maybe_emit_snapshot()
 
@@ -461,25 +484,30 @@ class ScanManager:
             return "recently_active"
         return "inactive"
 
-    def _maybe_emit_spectrum(
-        self, freqs: np.ndarray, power_db: np.ndarray, floor: float, center: int, span: int
-    ) -> None:
+    def _maybe_emit_spectrum(self, center: int, span: int) -> None:
         now = time.monotonic()
         min_interval = 1.0 / max(1, self._settings.spectrum_fps)
         if now - self._last_spectrum_emit < min_interval:
             return
         self._last_spectrum_emit = now
 
-        reduced = psd_mod.reduce_bins(power_db, self._settings.spectrum_bins)
+        if self._band_freqs is None or self._band_power is None:
+            self._reset_band_buffer()
+        assert self._band_freqs is not None and self._band_power is not None
+
         payload = {
             "session_id": self._session_id,
             "timestamp": iso_now(),
-            "f_start_hz": int(freqs[0]),
-            "f_stop_hz": int(freqs[-1]),
-            "bin_count": int(reduced.shape[0]),
-            "power_db": [round(float(x), 2) for x in reduced.tolist()],
-            "noise_floor_db": round(float(floor), 2),
+            "f_start_hz": int(self._band_freqs[0]),
+            "f_stop_hz": int(self._band_freqs[-1]),
+            "bin_count": int(self._band_power.shape[0]),
+            "power_db": [round(float(x), 2) for x in self._band_power.tolist()],
+            "noise_floor_db": round(float(self._band_floor), 2),
+            # Where the tuner is parked right now, so the UI can mark the live
+            # scan window inside the full-band view.
             "scan_pos_hz": int(center),
+            "window_start_hz": int(center - span // 2),
+            "window_stop_hz": int(center + span // 2),
         }
         self._ws.broadcast_spectrum(payload)
 
@@ -491,16 +519,22 @@ class ScanManager:
         self._clusterer.merge_overlapping()
         channels = await self._repos.channels.list()
         self._ws.broadcast_channels([c.model_dump(mode="json") for c in channels])
-        # Update scan progress metric.
+        # Update scan progress metric: how far the current window centre sits
+        # through the configured band.
         span_total = max(1, self._config.end_hz - self._config.start_hz)
-        pos = self._sweep_pos - self._config.start_hz
+        pos = self._current_center() - self._config.start_hz
         self.metrics.scan_progress = round(min(1.0, max(0.0, pos / span_total)), 4)
 
     # ------------------------------------------------------------ sweep math
     def _current_center(self) -> int:
         if self._mode == "focus" and self._focus_center is not None:
             return self._focus_center
-        return self._sweep_pos
+        if not self._sweep_centers:
+            self._compute_sweep_plan()
+        if not self._sweep_centers:
+            return (self._config.start_hz + self._config.end_hz) // 2
+        idx = self._sweep_idx % len(self._sweep_centers)
+        return self._sweep_centers[idx]
 
     def _current_span(self) -> int:
         if self._mode == "focus" and self._focus_span is not None:
@@ -513,13 +547,60 @@ class ScanManager:
         # Auto: 80% of the window to allow overlap at edges.
         return max(1, int(span * 0.8))
 
-    def _advance_sweep(self, span: int) -> None:
+    def _compute_sweep_plan(self) -> None:
+        """Build the list of window centre frequencies that tiles the band.
+
+        Each window observes `sample_rate` Hz of instantaneous bandwidth. When
+        the requested band is wider than one window the tuner must retune across
+        it; the centres are spaced by the (auto or configured) step and chosen so
+        the union of windows covers [start_hz, end_hz]. When the band fits inside
+        one window the plan is a single parked centre.
+        """
+        span = int(self._config.sample_rate)
+        start = int(self._config.start_hz)
+        end = int(self._config.end_hz)
+        band = max(1, end - start)
+
+        if band <= span:
+            self._sweep_centers = [(start + end) // 2]
+            self._sweep_idx = 0
+            return
+
         step = self._step_hz(span)
-        self._sweep_pos += step
-        if self._sweep_pos + span // 2 >= self._config.end_hz:
-            self._sweep_pos = self._config.start_hz + span // 2
-            if self._sweep_pos >= self._config.end_hz:
-                self._sweep_pos = self._config.start_hz
+        centers: list[int] = []
+        c = start + span // 2  # first window's lower edge sits at `start`
+        while True:
+            centers.append(c)
+            if c + span // 2 >= end:  # this window already covers the top of the band
+                break
+            c += step
+        self._sweep_centers = centers
+        self._sweep_idx = 0
+
+    def _reset_band_buffer(self) -> None:
+        """(Re)allocate the stitched full-band spectrum buffer."""
+        n = max(16, int(self._settings.spectrum_bins))
+        self._band_freqs = np.linspace(float(self._config.start_hz), float(self._config.end_hz), n)
+        # Start each band bin at a low sentinel; segments fill in as scanned.
+        self._band_power = np.full(n, -140.0, dtype=np.float64)
+
+    def _stitch_into_band(self, freqs: np.ndarray, power_db: np.ndarray, floor: float) -> None:
+        """Write the current window's PSD into the persistent band buffer."""
+        if self._band_freqs is None or self._band_power is None:
+            self._reset_band_buffer()
+        assert self._band_freqs is not None and self._band_power is not None
+        lo, hi = float(freqs[0]), float(freqs[-1])
+        mask = (self._band_freqs >= lo) & (self._band_freqs <= hi)
+        if mask.any():
+            # freqs is ascending; interpolate window PSD onto band bins in range.
+            self._band_power[mask] = np.interp(self._band_freqs[mask], freqs, power_db)
+        self._band_floor = float(floor)
+
+    def _advance_sweep(self, span: int) -> None:
+        if not self._sweep_centers:
+            self._compute_sweep_plan()
+        if self._sweep_centers:
+            self._sweep_idx = (self._sweep_idx + 1) % len(self._sweep_centers)
 
     def _dwell_samples(self) -> int:
         n = int(self._config.sample_rate * self._config.dwell_ms / 1000.0)
