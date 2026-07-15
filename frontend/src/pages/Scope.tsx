@@ -6,7 +6,20 @@ import { ScopeSpectrogram } from '../components/ScopeSpectrogram';
 import { AmplitudeStrip } from '../components/AmplitudeStrip';
 import { ColorLegend } from '../components/ColorLegend';
 import { InfoTip } from '../components/InfoTip';
-import { formatDb, formatSampleRate, hzToMHz, mhzToHz } from '../lib/format';
+import { CadenceBar } from '../components/CadenceBar';
+import { StatusBadge } from '../components/StatusBadge';
+import type { CandidateChannel } from '../lib/types';
+import {
+  formatConfidence,
+  formatDb,
+  formatIntervalSeconds,
+  formatRelative,
+  formatSampleRate,
+  formatSnr,
+  hzSpanToHuman,
+  hzToMHz,
+  mhzToHz,
+} from '../lib/format';
 
 const DEFAULT_CENTER_HZ = 433_920_000; // mid ISM 433 band fallback.
 
@@ -118,6 +131,41 @@ export function Scope(): JSX.Element {
 
   const dwellMs = axis != null ? (axis.envLen * axis.envDtUs) / 1000 : null;
 
+  // Nearest candidate channel to the focused centre (within the window), and a
+  // 1 s tick so the "next expected" countdown stays live.
+  const channels = useStore((s) => s.channels);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const focusChannel = useMemo<CandidateChannel | null>(() => {
+    if (focusCenterHz == null) return null;
+    const tol = (config?.sample_rate ?? 2_400_000) / 2;
+    let best: CandidateChannel | null = null;
+    let bestD = Infinity;
+    for (const c of channels.values()) {
+      const d = Math.abs(c.center_hz - focusCenterHz);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best != null && bestD <= tol ? best : null;
+  }, [channels, focusCenterHz, config]);
+
+  const nextExpected = ((): { text: string; overdue: boolean } => {
+    const ch = focusChannel;
+    if (ch == null || ch.recurrence_interval_s == null) return { text: '—', overdue: false };
+    const last = new Date(ch.last_seen).getTime();
+    if (Number.isNaN(last)) return { text: '—', overdue: false };
+    const deltaS = Math.round((last + ch.recurrence_interval_s * 1000 - nowMs) / 1000);
+    return deltaS >= 0
+      ? { text: `in ~${deltaS}s`, overdue: false }
+      : { text: `overdue by ${-deltaS}s`, overdue: true };
+  })();
+
   return (
     <div>
       <div className="page-header">
@@ -164,6 +212,58 @@ export function Scope(): JSX.Element {
 
       {actionMsg && <div className={`notice ${actionErr ? 'danger' : 'info'}`}>{actionMsg}</div>}
 
+      {inFocus && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Focus details
+            <InfoTip text="Details for the candidate channel nearest the parked centre. 'Next expected' is estimated from the observed recurrence interval and last-seen time — a cadence estimate, not a guarantee, and not a device identification." />
+          </h2>
+          {focusChannel ? (
+            <div className="row" style={{ gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <Detail
+                label="Parked centre"
+                value={`${hzToMHz(focusCenterHz ?? 0).toFixed(4)} MHz`}
+              />
+              <Detail
+                label="Matched channel"
+                value={`#${focusChannel.id} · ${hzToMHz(focusChannel.center_hz).toFixed(4)} MHz`}
+              />
+              <Detail label="Bandwidth" value={hzSpanToHuman(focusChannel.bandwidth_hz)} />
+              <Detail label="SNR" value={formatSnr(focusChannel.snr_db)} />
+              <Detail label="Confidence" value={formatConfidence(focusChannel.confidence)} />
+              <Detail label="Observations" value={String(focusChannel.observation_count)} />
+              <Detail
+                label="Recurrence"
+                value={formatIntervalSeconds(focusChannel.recurrence_interval_s)}
+              />
+              <Detail label="Last seen" value={formatRelative(focusChannel.last_seen)} />
+              <Detail
+                label="Next expected"
+                value={nextExpected.text}
+                tone={nextExpected.overdue ? 'warn' : 'ok'}
+              />
+              <div className="col" style={{ gap: 2 }}>
+                <span className="small faint">Status</span>
+                <StatusBadge status={focusChannel.status} />
+              </div>
+              <div className="col" style={{ gap: 2 }}>
+                <span className="small faint">Cadence</span>
+                <CadenceBar
+                  recurrenceIntervalS={focusChannel.recurrence_interval_s}
+                  observationCount={focusChannel.observation_count}
+                  typicalBurstMs={focusChannel.typical_burst_ms}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="empty">
+              No candidate channel detected at this centre yet. The scope still shows live IQ; let
+              the sweep run to build up detections, then re-open this focus.
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="card">
         <div className="chart-toolbar">
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -184,7 +284,9 @@ export function Scope(): JSX.Element {
           <>
             <div className="scope-view" style={{ height: 360 }}>
               {axis && (
-                <div className="scope-yaxis mono">
+                // Reserve the same ~20px the spectrogram uses for its bottom time
+                // axis so these frequency ticks stay aligned with the canvas.
+                <div className="scope-yaxis mono" style={{ paddingBottom: 20 }}>
                   {[...axis.ticks].reverse().map((hz, i) => (
                     <span key={i}>{hzToMHz(hz).toFixed(3)}</span>
                   ))}
@@ -194,15 +296,7 @@ export function Scope(): JSX.Element {
                 <ScopeSpectrogram key={windowKey ?? 'pending'} height={360} rows={512} spanDb={60} />
               </div>
             </div>
-            {axis ? (
-              <div className="scope-time-axis small faint mono">
-                <span>← older</span>
-                <span>time</span>
-                <span>newest →</span>
-              </div>
-            ) : (
-              <div className="hint">Waiting for the first scope frame…</div>
-            )}
+            {!axis && <div className="hint">Waiting for the first scope frame…</div>}
             {axis && (
               <div style={{ marginTop: 8, marginLeft: 70, maxWidth: 320 }}>
                 <ColorLegend
@@ -213,8 +307,9 @@ export function Scope(): JSX.Element {
               </div>
             )}
             <div className="hint">
-              Time flows left → right (newest on the right); frequency (MHz) is on the vertical axis,
-              high at the top. Hover for a frequency and level readout.
+              Time runs left → right (newest on the right); frequency (MHz) is on the vertical axis,
+              high at the top. Scroll to zoom the time axis, drag to pan through history,
+              double-click to reset. Hover for a frequency/time/level readout.
             </div>
           </>
         ) : (
@@ -241,6 +336,26 @@ export function Scope(): JSX.Element {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Detail({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'ok' | 'warn';
+}): JSX.Element {
+  const color = tone === 'warn' ? 'var(--warn, #f59e0b)' : tone === 'ok' ? 'var(--ok, #4ade80)' : undefined;
+  return (
+    <div className="col" style={{ gap: 2 }}>
+      <span className="small faint">{label}</span>
+      <span className="mono" style={color != null ? { color } : undefined}>
+        {value}
+      </span>
     </div>
   );
 }

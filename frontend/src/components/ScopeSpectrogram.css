@@ -1,0 +1,108 @@
+/* Zoomable focus-scope spectrogram. The parent (Scope.tsx) owns the vertical
+   frequency axis on the left; this component owns the canvas, an overlay
+   toolbar, the bottom time axis, and the hover readout. */
+
+.scopespec-root {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #05070d;
+}
+
+.scopespec-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.scopespec-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.scopespec-toolbar {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  font-size: 0.72rem;
+  background: rgba(5, 7, 13, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.scopespec-badge {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.66rem;
+}
+.scopespec-badge.is-live {
+  color: #05070d;
+  background: #34d399;
+}
+.scopespec-badge.is-paused {
+  color: #05070d;
+  background: #fbbf24;
+}
+
+.scopespec-readout {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.scopespec-reset {
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.scopespec-reset:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.scopespec-hover {
+  position: absolute;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 6px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  background: rgba(5, 7, 13, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.scopespec-axis {
+  position: relative;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+  font-size: 0.68rem;
+  color: var(--text-faint);
+}
+.scopespec-axis span {
+  position: absolute;
+  top: 3px;
+  white-space: nowrap;
+}
