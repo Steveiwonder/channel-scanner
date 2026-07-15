@@ -81,7 +81,12 @@ WORKDIR /app
 # Copy only requirements first for layer caching.
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /app/requirements.txt
+    && pip install --no-cache-dir -r /app/requirements.txt \
+    # pyrtlsdr is the Python binding for the system librtlsdr installed above.
+    # It is an optional extra in pyproject, but this image ships USB passthrough
+    # support, so we install it here so SDR_BACKEND=rtlsdr works out of the box.
+    # (Without it the app logs "No module named 'rtlsdr'" and falls back to sim.)
+    && pip install --no-cache-dir "pyrtlsdr==0.3.0"
 
 # ---- Application code ------------------------------------------------------
 COPY backend/ /app/
