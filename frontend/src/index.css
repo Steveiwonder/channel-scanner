@@ -352,6 +352,20 @@ th.sortable:hover {
   position: relative;
   white-space: nowrap;
 }
+/* Row actions: compact buttons that wrap instead of overflowing the (wide) table. */
+.actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 200px;
+}
+.actions-cell button,
+.actions-cell a.badge {
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
 tbody tr:hover {
   background: rgba(56, 189, 248, 0.06);
 }

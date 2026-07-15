@@ -383,7 +383,7 @@ export function Channels(): JSX.Element {
                     <StatusBadge status={ch.status} />
                   </td>
                   <td>
-                    <div className="row" style={{ flexWrap: 'nowrap' }}>
+                    <div className="actions-cell">
                       <button onClick={() => setDetailFor(ch)}>Details</button>
                       <button onClick={() => focus(ch)}>Focus</button>
                       <button onClick={() => setObsFor(ch)}>History</button>
