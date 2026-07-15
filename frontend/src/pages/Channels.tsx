@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { StatusBadge } from '../components/StatusBadge';
@@ -33,6 +33,22 @@ type SortKey =
   | 'confidence'
   | 'status';
 
+interface ChannelFilters {
+  freqLoMhz: string;
+  freqHiMhz: string;
+  minSnr: string;
+  minConf: string;
+  status: '' | 'active' | 'recently_active' | 'inactive';
+}
+
+const EMPTY_CHANNEL_FILTERS: ChannelFilters = {
+  freqLoMhz: '',
+  freqHiMhz: '',
+  minSnr: '',
+  minConf: '',
+  status: '',
+};
+
 export function Channels(): JSX.Element {
   const channelMap = useStore((s) => s.channels);
   const isOperator = useStore((s) => s.isOperator());
@@ -41,9 +57,42 @@ export function Channels(): JSX.Element {
   const [sortKey, setSortKey] = useState<SortKey>('center_hz');
   const [asc, setAsc] = useState(true);
   const [obsFor, setObsFor] = useState<CandidateChannel | null>(null);
+  const [filters, setFilters] = useState<ChannelFilters>(EMPTY_CHANNEL_FILTERS);
+  // Freeze the table so it stops reshuffling while you read/compare. When
+  // frozen we display a snapshot taken at freeze time instead of the live map.
+  const [frozen, setFrozen] = useState(false);
+  const frozenSnapshot = useRef<CandidateChannel[]>([]);
+
+  const source = frozen ? frozenSnapshot.current : Array.from(channelMap.values());
+  const totalCount = source.length;
+  const activeCount = source.filter((c) => c.status === 'active').length;
+  const strongest = source.reduce<CandidateChannel | null>(
+    (best, c) => (best == null || c.peak_power_db > best.peak_power_db ? c : best),
+    null,
+  );
+
+  function toggleFreeze(): void {
+    if (!frozen) {
+      frozenSnapshot.current = Array.from(channelMap.values());
+      setFrozen(true);
+    } else {
+      setFrozen(false);
+    }
+  }
 
   const channels = useMemo(() => {
-    const arr = Array.from(channelMap.values());
+    const lo = filters.freqLoMhz ? Number(filters.freqLoMhz) * 1e6 : null;
+    const hi = filters.freqHiMhz ? Number(filters.freqHiMhz) * 1e6 : null;
+    const minSnr = filters.minSnr ? Number(filters.minSnr) : null;
+    const minConf = filters.minConf ? Number(filters.minConf) : null;
+    const arr = source.filter((c) => {
+      if (lo != null && c.center_hz < lo) return false;
+      if (hi != null && c.center_hz > hi) return false;
+      if (minSnr != null && Number.isFinite(minSnr) && c.snr_db < minSnr) return false;
+      if (minConf != null && Number.isFinite(minConf) && c.confidence < minConf) return false;
+      if (filters.status && c.status !== filters.status) return false;
+      return true;
+    });
     arr.sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
@@ -57,7 +106,11 @@ export function Channels(): JSX.Element {
       return asc ? cmp : -cmp;
     });
     return arr;
-  }, [channelMap, sortKey, asc]);
+  }, [source, filters, sortKey, asc]);
+
+  function setFilter<K extends keyof ChannelFilters>(key: K, value: ChannelFilters[K]): void {
+    setFilters((f) => ({ ...f, [key]: value }));
+  }
 
   // Normalize avg power to 0..1 across the current channels so similar values
   // read as similar-length bars — a block of similar channels stands out,
@@ -99,6 +152,13 @@ export function Channels(): JSX.Element {
         <h1>Candidate channels</h1>
         <div className="row">
           <NoiseFloorIndicator />
+          <button
+            className={frozen ? 'danger' : ''}
+            onClick={toggleFreeze}
+            title="Freeze the table so it stops updating while you read/compare"
+          >
+            {frozen ? 'Frozen — resume' : 'Freeze'}
+          </button>
           <a className="badge dim" href={api.exportUrl('csv', 'channels')} download>
             Export CSV
           </a>
@@ -108,6 +168,25 @@ export function Channels(): JSX.Element {
         </div>
       </div>
 
+      <div className="row small faint" style={{ gap: 12, marginBottom: 12 }}>
+        <span>
+          <strong>{totalCount}</strong> channels
+        </span>
+        <span>
+          <strong>{activeCount}</strong> active
+        </span>
+        <span>
+          showing <strong>{channels.length}</strong> after filters
+        </span>
+        {strongest && (
+          <span>
+            strongest <strong>{hzToMHz(strongest.center_hz).toFixed(4)} MHz</strong> (
+            {formatDb(strongest.peak_power_db)})
+          </span>
+        )}
+        {frozen && <span className="danger-text">display frozen</span>}
+      </div>
+
       {!isOperator && (
         <div className="notice warn">
           You are not the control operator. Focus will be applied by the backend but may be
@@ -115,8 +194,67 @@ export function Channels(): JSX.Element {
         </div>
       )}
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>Filter</h2>
+          <button onClick={() => setFilters(EMPTY_CHANNEL_FILTERS)}>Clear</button>
+        </div>
+        <div className="form-grid">
+          <div className="field">
+            <label>Freq low (MHz)</label>
+            <input
+              value={filters.freqLoMhz}
+              onChange={(e) => setFilter('freqLoMhz', e.target.value)}
+              inputMode="decimal"
+              placeholder="867"
+            />
+          </div>
+          <div className="field">
+            <label>Freq high (MHz)</label>
+            <input
+              value={filters.freqHiMhz}
+              onChange={(e) => setFilter('freqHiMhz', e.target.value)}
+              inputMode="decimal"
+              placeholder="870"
+            />
+          </div>
+          <div className="field">
+            <label>Min SNR (dB)</label>
+            <input
+              value={filters.minSnr}
+              onChange={(e) => setFilter('minSnr', e.target.value)}
+              inputMode="decimal"
+              placeholder="10"
+            />
+          </div>
+          <div className="field">
+            <label>Min confidence (0–1)</label>
+            <input
+              value={filters.minConf}
+              onChange={(e) => setFilter('minConf', e.target.value)}
+              inputMode="decimal"
+              placeholder="0.5"
+            />
+          </div>
+          <div className="field">
+            <label>Status</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilter('status', e.target.value as ChannelFilters['status'])}
+            >
+              <option value="">Any</option>
+              <option value="active">Active</option>
+              <option value="recently_active">Recently active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {channels.length === 0 ? (
-        <div className="card empty">No candidate channels detected yet.</div>
+        <div className="card empty">
+          {totalCount === 0 ? 'No candidate channels detected yet.' : 'No channels match the filters.'}
+        </div>
       ) : (
         <div className="table-wrap">
           <table>
@@ -196,7 +334,18 @@ export function Channels(): JSX.Element {
                   <td title={formatIso(ch.last_seen)}>{formatRelative(ch.last_seen)}</td>
                   <td className="num">{formatDuration(ch.typical_burst_ms)}</td>
                   <td className="num">{formatIntervalSeconds(ch.recurrence_interval_s)}</td>
-                  <td className="num">{formatConfidence(ch.confidence)}</td>
+                  <td className="num">
+                    <div
+                      className="heatcell"
+                      title={`Confidence ${ch.confidence.toFixed(2)} (recurrence, SNR, stability)`}
+                    >
+                      <div
+                        className="heatcell-bar conf"
+                        style={{ width: `${(Math.min(1, Math.max(0, ch.confidence)) * 100).toFixed(0)}%` }}
+                      />
+                      <span className="heatcell-val">{formatConfidence(ch.confidence)}</span>
+                    </div>
+                  </td>
                   <td>
                     <StatusBadge status={ch.status} />
                   </td>

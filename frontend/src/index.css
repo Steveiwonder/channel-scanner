@@ -344,6 +344,10 @@ th.sortable:hover {
   background: linear-gradient(90deg, rgba(56, 189, 248, 0.12), rgba(56, 189, 248, 0.4));
   border-right: 1px solid rgba(56, 189, 248, 0.55);
 }
+.heatcell-bar.conf {
+  background: linear-gradient(90deg, rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.4));
+  border-right-color: rgba(74, 222, 128, 0.6);
+}
 .heatcell-val {
   position: relative;
   white-space: nowrap;
