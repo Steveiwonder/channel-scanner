@@ -45,6 +45,9 @@ export function Scope(): JSX.Element {
     setActionMsg(null);
     try {
       await api.focus(centerHz);
+      // Optimistically flip to focus mode so the UI reacts immediately; the
+      // periodic server status tick then confirms/corrects it.
+      useStore.getState().setMode('focus', centerHz);
       setActionMsg(`Focusing on ${hzToMHz(centerHz).toFixed(4)} MHz…`);
     } catch (err) {
       setActionErr(true);
@@ -79,6 +82,7 @@ export function Scope(): JSX.Element {
     setActionMsg(null);
     try {
       await api.resumeSweep();
+      useStore.getState().setMode('sweep', null); // optimistic; status confirms
       setActionMsg('Resumed normal sweeping.');
     } catch (err) {
       setActionErr(true);
@@ -146,11 +150,13 @@ export function Scope(): JSX.Element {
         </div>
         <div className="row">
           <button className="primary" onClick={onStartClick}>
-            Start scope (focus)
+            {inFocus ? 'Re-tune scope' : 'Start scope (focus)'}
           </button>
-          <button onClick={() => void onBackToSweep()} disabled={!inFocus}>
-            Back to sweep
-          </button>
+          {inFocus && (
+            <button className="danger" onClick={() => void onBackToSweep()}>
+              Stop scope
+            </button>
+          )}
         </div>
       </div>
 
