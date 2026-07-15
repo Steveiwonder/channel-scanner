@@ -143,27 +143,39 @@ export function Scope(): JSX.Element {
   const focusChannel = useMemo<CandidateChannel | null>(() => {
     if (focusCenterHz == null) return null;
     const tol = (config?.sample_rate ?? 2_400_000) / 2;
-    let best: CandidateChannel | null = null;
-    let bestD = Infinity;
-    for (const c of channels.values()) {
-      const d = Math.abs(c.center_hz - focusCenterHz);
-      if (d < bestD) {
-        bestD = d;
-        best = c;
-      }
-    }
-    return best != null && bestD <= tol ? best : null;
+    const near = Array.from(channels.values()).filter(
+      (c) => Math.abs(c.center_hz - focusCenterHz) <= tol,
+    );
+    if (near.length === 0) return null;
+    // Prefer the most recently-seen channel near the parked centre: drift often
+    // spawns near-duplicate candidates, and we want the ACTIVE one (so the
+    // countdown resets on each burst), not a stale sibling. Tiebreak on proximity.
+    near.sort((a, b) => {
+      const t = b.last_seen.localeCompare(a.last_seen);
+      if (t !== 0) return t;
+      return Math.abs(a.center_hz - focusCenterHz) - Math.abs(b.center_hz - focusCenterHz);
+    });
+    return near[0] ?? null;
   }, [channels, focusCenterHz, config]);
 
-  const nextExpected = ((): { text: string; overdue: boolean } => {
+  const nextExpected = ((): { text: string; tone?: 'ok' | 'warn' } => {
     const ch = focusChannel;
-    if (ch == null || ch.recurrence_interval_s == null) return { text: '—', overdue: false };
+    if (ch == null || ch.recurrence_interval_s == null) return { text: '—' };
     const last = new Date(ch.last_seen).getTime();
-    if (Number.isNaN(last)) return { text: '—', overdue: false };
-    const deltaS = Math.round((last + ch.recurrence_interval_s * 1000 - nowMs) / 1000);
-    return deltaS >= 0
-      ? { text: `in ~${deltaS}s`, overdue: false }
-      : { text: `overdue by ${-deltaS}s`, overdue: true };
+    if (Number.isNaN(last)) return { text: '—' };
+    const intervalMs = ch.recurrence_interval_s * 1000;
+    const deltaS = Math.round((last + intervalMs - nowMs) / 1000);
+    if (deltaS >= 0) return { text: `in ~${deltaS}s`, tone: 'ok' };
+    // Overdue. If it has been silent for well beyond the expected interval, say
+    // so plainly instead of an ever-growing "overdue by" counter.
+    const silentS = Math.round((nowMs - last) / 1000);
+    if (nowMs - last > Math.max(60_000, 3 * intervalMs)) {
+      return {
+        text: `silent ${silentS}s (expected ~${Math.round(ch.recurrence_interval_s)}s)`,
+        tone: 'warn',
+      };
+    }
+    return { text: `overdue by ${-deltaS}s`, tone: 'warn' };
   })();
 
   return (
@@ -237,11 +249,7 @@ export function Scope(): JSX.Element {
                 value={formatIntervalSeconds(focusChannel.recurrence_interval_s)}
               />
               <Detail label="Last seen" value={formatRelative(focusChannel.last_seen)} />
-              <Detail
-                label="Next expected"
-                value={nextExpected.text}
-                tone={nextExpected.overdue ? 'warn' : 'ok'}
-              />
+              <Detail label="Next expected" value={nextExpected.text} tone={nextExpected.tone} />
               <div className="col" style={{ gap: 2 }}>
                 <span className="small faint">Status</span>
                 <StatusBadge status={focusChannel.status} />
@@ -347,7 +355,7 @@ function Detail({
 }: {
   label: string;
   value: string;
-  tone?: 'ok' | 'warn';
+  tone?: 'ok' | 'warn' | undefined;
 }): JSX.Element {
   const color = tone === 'warn' ? 'var(--warn, #f59e0b)' : tone === 'ok' ? 'var(--ok, #4ade80)' : undefined;
   return (
