@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './InfoTip.css';
 
 export interface InfoTipProps {
@@ -8,37 +9,67 @@ export interface InfoTipProps {
   label?: string;
 }
 
+interface BubblePos {
+  left: number;
+  top: number;
+  placement: 'above' | 'below';
+}
+
+const BUBBLE_WIDTH = 260;
+const MARGIN = 8;
+
 /**
  * Accessible "?" info popover for explaining a metric in plain language.
  *
- * The badge is focusable (tabIndex=0, role="button") and exposes `text` as its
- * accessible name via aria-label. The tooltip bubble is shown on pointer hover
- * (pure CSS) and on keyboard focus (React state), so keyboard and mouse users
- * get the same affordance. It renders inline so it can sit next to a table
- * header or a metric label.
+ * The bubble is rendered in a portal on document.body with fixed positioning
+ * (computed from the badge's bounding rect and clamped to the viewport), so it
+ * is never clipped by overflow containers (tables, cards) or the window edge.
+ * Shown on pointer hover and on keyboard focus.
  */
 export function InfoTip({ text, label }: InfoTipProps): JSX.Element {
-  const [focused, setFocused] = useState(false);
+  const badgeRef = useRef<HTMLSpanElement | null>(null);
+  const [pos, setPos] = useState<BubblePos | null>(null);
+
+  const open = useCallback(() => {
+    const el = badgeRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    let left = r.left + r.width / 2 - BUBBLE_WIDTH / 2;
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - BUBBLE_WIDTH - MARGIN));
+    // Prefer above; flip below when there isn't room near the top of the window.
+    const placement: 'above' | 'below' = r.top > 140 ? 'above' : 'below';
+    setPos({ left, top: placement === 'above' ? r.top : r.bottom, placement });
+  }, []);
+
+  const close = useCallback(() => setPos(null), []);
 
   return (
     <span className="infotip">
       {label != null && label !== '' && <span className="infotip__label">{label}</span>}
       <span
+        ref={badgeRef}
         className="infotip__badge"
         role="button"
         tabIndex={0}
         aria-label={text}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onMouseEnter={open}
+        onMouseLeave={close}
+        onFocus={open}
+        onBlur={close}
       >
         <span aria-hidden="true">?</span>
-        <span
-          className={focused ? 'infotip__bubble infotip__bubble--visible' : 'infotip__bubble'}
-          role="tooltip"
-        >
-          {text}
-        </span>
       </span>
+      {pos != null &&
+        createPortal(
+          <span
+            className={`infotip__bubble infotip__bubble--${pos.placement}`}
+            role="tooltip"
+            style={{ left: pos.left, top: pos.top, width: BUBBLE_WIDTH }}
+          >
+            {text}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }

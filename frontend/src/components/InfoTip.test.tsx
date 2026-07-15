@@ -14,18 +14,21 @@ describe('InfoTip', () => {
     ).toBeInTheDocument();
   });
 
-  it('reveals the tooltip text when the badge is focused', async () => {
+  it('shows the tooltip on focus and hides it on blur', async () => {
     const user = userEvent.setup();
     render(<InfoTip text="Peak power observed for this channel" />);
 
-    const tooltip = screen.getByRole('tooltip');
-    expect(tooltip).toHaveTextContent('Peak power observed for this channel');
-    expect(tooltip.className).not.toContain('infotip__bubble--visible');
+    // The bubble is rendered on demand (in a portal), so it is absent initially.
+    expect(screen.queryByRole('tooltip')).toBeNull();
 
     await user.tab();
     expect(
       screen.getByRole('button', { name: 'Peak power observed for this channel' }),
     ).toHaveFocus();
-    expect(screen.getByRole('tooltip').className).toContain('infotip__bubble--visible');
+    const tooltip = screen.getByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Peak power observed for this channel');
+
+    await user.tab();
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });
