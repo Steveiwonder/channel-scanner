@@ -43,7 +43,9 @@ export function Recordings(): JSX.Element {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const iqEnabled = false; // IQ recording is OFF by default per contract (ENABLE_IQ_RECORDING=false).
+  // Reflect the live backend setting (ENABLE_IQ_RECORDING / config.enable_iq_recording),
+  // which is now runtime-configurable, rather than assuming it is always off.
+  const iqEnabled = config?.enable_iq_recording ?? false;
 
   async function reload(): Promise<void> {
     setLoading(true);
@@ -148,8 +150,14 @@ export function Recordings(): JSX.Element {
             <button
               className="primary"
               onClick={() => void startRecording()}
-              disabled={busy || !isOperator}
-              title={!isOperator ? 'Requires control lease' : 'Start an IQ recording'}
+              disabled={busy || !isOperator || !iqEnabled}
+              title={
+                !iqEnabled
+                  ? 'IQ recording is disabled (set ENABLE_IQ_RECORDING=true or enable it in Settings)'
+                  : !isOperator
+                    ? 'Requires control lease'
+                    : 'Start an IQ recording'
+              }
             >
               Start IQ recording
             </button>
@@ -157,11 +165,17 @@ export function Recordings(): JSX.Element {
         </div>
       </div>
 
-      {!iqEnabled && (
+      {iqEnabled ? (
         <div className="notice info">
-          IQ recording is disabled by default (ENABLE_IQ_RECORDING=false). Existing recordings are
-          still listed and can be inspected, downloaded, or deleted. Starting a recording requires
-          the backend to have IQ capture enabled.
+          IQ recording is enabled. Captures are bounded to{' '}
+          {config?.max_iq_storage_gb ?? '—'} GB total with circular retention. Start/stop with the
+          button above (requires the control lease).
+        </div>
+      ) : (
+        <div className="notice info">
+          IQ recording is disabled (ENABLE_IQ_RECORDING=false). Existing recordings are still listed
+          and can be inspected, downloaded, or deleted. Enable IQ capture via the env var or the
+          Settings page to start new recordings.
         </div>
       )}
       {error && <div className="notice danger">{error}</div>}
