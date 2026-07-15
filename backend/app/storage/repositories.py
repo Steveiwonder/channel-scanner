@@ -463,3 +463,24 @@ class Repositories:
         self.config_changes = ConfigChangeRepository(db)
         self.receiver_config = ReceiverConfigRepository(db)
         self.recordings = RecordingRepository(db)
+
+    async def clear_all_data(self) -> None:
+        """Delete all observation/event/recording rows.
+
+        Keeps `receiver_config` so the current scan configuration and its version
+        survive a data wipe. Children are deleted before parents to respect any
+        foreign keys. Recording *files* are removed separately by the recorder.
+        """
+        tables = (
+            "detections",
+            "bursts",
+            "client_events",
+            "config_changes",
+            "recordings",
+            "candidate_channels",
+            "sessions",
+        )
+        async with self.db.write_lock:
+            for table in tables:
+                await self.db.connection.execute(f"DELETE FROM {table}")  # noqa: S608
+            await self.db.connection.commit()

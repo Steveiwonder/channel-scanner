@@ -9,6 +9,7 @@ from . import (
     clients,
     config,
     control,
+    data,
     device,
     events,
     export,
@@ -32,5 +33,6 @@ api_router.include_router(export.router)
 api_router.include_router(recordings.router)
 api_router.include_router(clients.router)
 api_router.include_router(control.router)
+api_router.include_router(data.router)
 
 __all__ = ["api_router"]

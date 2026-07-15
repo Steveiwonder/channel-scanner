@@ -56,6 +56,17 @@ class Recorder:
         self._enabled = bool(enabled)
         self._max_bytes = int(max(0.0, max_storage_gb) * (1024**3))
 
+    def delete_all(self) -> int:
+        """Delete every recording file on disk. Returns the number removed."""
+        if not self._dir.exists():
+            return 0
+        count = 0
+        for f in self._dir.glob("*.sigmf-*"):
+            if f.is_file():
+                f.unlink(missing_ok=True)
+                count += 1
+        return count
+
     @property
     def enabled(self) -> bool:
         return self._enabled

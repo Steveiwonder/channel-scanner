@@ -337,6 +337,27 @@ class ScanManager:
         await self._emit_event("sweep", "resumed sweep")
         await self._broadcast_status()
 
+    async def clear_all_data(self) -> None:
+        """Stop scanning, wipe persisted observations + recordings, and reset all
+        in-memory detection state. The current scan configuration is preserved."""
+        await self.stop_scan()
+        # Reset in-memory detection state.
+        self._clusterer = ChannelClusterer(proximity_hz=self._proximity_hz())
+        self._recurrence.clear()
+        self._channel_db_id.clear()
+        self._last_persist.clear()
+        self._session_id = None
+        self._noise.reset()
+        self._reset_band_buffer()
+        self.metrics = ScanMetrics()
+        # Wipe persisted rows and recording files.
+        await self._repos.clear_all_data()
+        removed = self._recorder.delete_all() if self._recorder is not None else 0
+        await self._emit_event("data_cleared", f"all data cleared (recordings removed={removed})")
+        self._ws.broadcast_channels([])
+        await self._broadcast_status()
+        log.info("data.cleared", recordings_removed=removed)
+
     # ------------------------------------------------------- config mutation
     async def update_config(
         self, update: schemas.ScanConfigUpdate, *, client_id: str

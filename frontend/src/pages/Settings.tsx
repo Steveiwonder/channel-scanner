@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store/store';
 import { ControlLeaseBar } from '../components/ControlLeaseBar';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { api, ApiError } from '../lib/api';
 import {
   computeWarnings,
@@ -38,6 +39,24 @@ export function Settings(): JSX.Element {
     null,
   );
   const [conflictVersion, setConflictVersion] = useState<number | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  async function clearAllData(): Promise<void> {
+    setConfirmClear(false);
+    setClearing(true);
+    try {
+      await api.clearAllData(clientId);
+      setMessage({ tone: 'info', text: 'All recorded data cleared. Scan settings were kept.' });
+    } catch (err) {
+      setMessage({
+        tone: 'danger',
+        text: err instanceof ApiError ? err.message : String(err),
+      });
+    } finally {
+      setClearing(false);
+    }
+  }
 
   // Sync form when config first loads (but don't clobber unsaved edits after that).
   useEffect(() => {
@@ -344,6 +363,45 @@ export function Settings(): JSX.Element {
             </table>
           </div>
         </div>
+      )}
+
+      <div className="card danger-zone" style={{ marginTop: 16 }}>
+        <h2>Danger zone</h2>
+        <p className="small faint" style={{ marginTop: 0 }}>
+          Permanently delete all recorded data — candidate channels, detections, bursts, events,
+          sessions, and IQ recordings (files included). Your scan configuration is kept. This cannot
+          be undone.
+        </p>
+        <button
+          className="danger"
+          onClick={() => setConfirmClear(true)}
+          disabled={!isOperator || clearing}
+          title={!isOperator ? 'Requires the control lease' : 'Delete all recorded data'}
+        >
+          {clearing ? 'Clearing…' : 'Clear all data'}
+        </button>
+        {!isOperator && (
+          <span className="small faint" style={{ marginLeft: 8 }}>
+            Acquire the control lease above to enable.
+          </span>
+        )}
+      </div>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title="Clear all data"
+          danger
+          confirmLabel="Delete everything"
+          message={
+            <span>
+              This permanently deletes <strong>all</strong> candidate channels, detections, bursts,
+              events, sessions, and IQ recordings (including files on disk). Your scan configuration
+              is preserved. This cannot be undone. Continue?
+            </span>
+          }
+          onConfirm={() => void clearAllData()}
+          onCancel={() => setConfirmClear(false)}
+        />
       )}
     </div>
   );

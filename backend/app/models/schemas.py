@@ -262,6 +262,12 @@ class FocusBody(BaseModel):
     channel_id: int | None = None
 
 
+class ClientActionBody(BaseModel):
+    """Body for destructive/controlled actions gated by the operator lease."""
+
+    client_id: str
+
+
 class ChannelsResponse(BaseModel):
     channels: list[CandidateChannel]
 

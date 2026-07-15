@@ -164,6 +164,9 @@ export const api = {
     ),
   releaseControl: (clientId: string): Promise<ReleaseResponse> =>
     request('/api/control/release', jsonBody({ client_id: clientId })),
+
+  clearAllData: (clientId: string): Promise<OkResponse> =>
+    request('/api/data/clear', jsonBody({ client_id: clientId })),
 };
 
 export type Api = typeof api;
