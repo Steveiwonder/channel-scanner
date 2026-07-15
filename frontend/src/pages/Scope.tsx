@@ -34,6 +34,12 @@ export function Scope(): JSX.Element {
   const mode = useStore((s) => s.mode);
   const focusCenterHz = useStore((s) => s.focusCenterHz);
   const config = useStore((s) => s.config);
+  // Modulation hint (sticky) — selected as primitives so the page doesn't
+  // re-render on every ~10/s scope frame, only when the classification changes.
+  const modType = useStore((s) => s.scope?.modulation?.modulation ?? null);
+  const modSymbolRate = useStore((s) => s.scope?.modulation?.symbol_rate_hz ?? null);
+  const modDepth = useStore((s) => s.scope?.modulation?.amplitude_depth ?? null);
+  const modConfidence = useStore((s) => s.scope?.modulation?.confidence ?? null);
   // Low-frequency selector: this string only changes when the focus window
   // changes, so the page does NOT re-render on every ~20/s scope frame.
   const windowKey = useStore((s) =>
@@ -178,6 +184,18 @@ export function Scope(): JSX.Element {
     return { text: `overdue by ${-deltaS}s`, tone: 'warn' };
   })();
 
+  const modText =
+    modType == null || modType === 'unknown'
+      ? '—'
+      : [
+          modType,
+          modSymbolRate != null ? `~${(modSymbolRate / 1000).toFixed(1)} kbaud` : null,
+          modDepth != null ? `depth ${(modDepth * 100).toFixed(0)}%` : null,
+          modConfidence != null ? `conf ${modConfidence.toFixed(2)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
   return (
     <div>
       <div className="page-header">
@@ -250,6 +268,7 @@ export function Scope(): JSX.Element {
               />
               <Detail label="Last seen" value={formatRelative(focusChannel.last_seen)} />
               <Detail label="Next expected" value={nextExpected.text} tone={nextExpected.tone} />
+              <Detail label="Modulation (hint)" value={modText} />
               <div className="col" style={{ gap: 2 }}>
                 <span className="small faint">Status</span>
                 <StatusBadge status={focusChannel.status} />

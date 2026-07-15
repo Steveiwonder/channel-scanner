@@ -14,6 +14,8 @@ import { Channels } from './pages/Channels';
 import { Timeline } from './pages/Timeline';
 import { Occupancy } from './pages/Occupancy';
 import { Decoder } from './pages/Decoder';
+import { Investigate } from './pages/Investigate';
+import { SurveyReport } from './pages/SurveyReport';
 import { Recordings } from './pages/Recordings';
 import { Settings } from './pages/Settings';
 
@@ -91,6 +93,8 @@ export default function App(): JSX.Element {
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/occupancy" element={<Occupancy />} />
           <Route path="/decoder" element={<Decoder />} />
+          <Route path="/investigate" element={<Investigate />} />
+          <Route path="/report" element={<SurveyReport />} />
           <Route path="/recordings" element={<Recordings />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />

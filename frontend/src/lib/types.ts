@@ -224,6 +224,26 @@ export interface OccupancyResponse {
   grid: number[][];
 }
 
+export interface ModulationHint {
+  modulation: 'OOK' | 'FSK' | 'unknown';
+  symbol_rate_hz: number | null;
+  amplitude_depth: number;
+  freq_spread_hz: number;
+  confidence: number;
+}
+
+export interface CalibrateResponse {
+  ok: boolean;
+  message: string;
+  reference_hz?: number;
+  measured_hz?: number;
+  offset_hz?: number;
+  ppm_error?: number;
+  current_ppm?: number;
+  suggested_ppm?: number;
+  peak_snr_db?: number;
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket protocol (/ws/live)
 // ---------------------------------------------------------------------------
@@ -261,6 +281,8 @@ export interface ScopeFrame {
   env_dt_us: number;
   seq: number;
   t_ms: number;
+  /** Coarse modulation hint for the parked channel (sticky; null until known). */
+  modulation?: ModulationHint | null;
 }
 
 export interface WsHello {

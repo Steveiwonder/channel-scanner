@@ -6,6 +6,7 @@ import type {
   AcquireResponse,
   AppEvent,
   CandidateChannel,
+  CalibrateResponse,
   ClientsResponse,
   DecodesResponse,
   DecoderRunResponse,
@@ -184,6 +185,9 @@ export const api = {
 
   clearAllData: (clientId: string): Promise<OkResponse> =>
     request('/api/data/clear', jsonBody({ client_id: clientId })),
+
+  calibrate: (referenceHz: number, searchHz = 50_000): Promise<CalibrateResponse> =>
+    request('/api/calibrate', jsonBody({ reference_hz: referenceHz, search_hz: searchHz })),
 };
 
 export type Api = typeof api;

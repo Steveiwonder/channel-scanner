@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CandidateChannel, ChannelStatus } from '../lib/types';
 import { formatConfidence, formatSnr, hzToMHz } from '../lib/format';
+import { markersInRange, rangesInRange } from '../lib/referenceBands';
 import './BandMap.css';
 
 export interface BandMapProps {
@@ -58,6 +59,8 @@ export function BandMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [measuredW, setMeasuredW] = useState(0);
   const [hover, setHover] = useState<HoverState | null>(null);
+  // Optional overlay of known 868-band reference channels / ETSI sub-bands.
+  const [showReference, setShowReference] = useState(true);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -86,6 +89,15 @@ export function BandMap({
     return out;
   }, [startHz, endHz, span]);
 
+  const refMarkers = useMemo(
+    () => (showReference ? markersInRange(startHz, endHz) : []),
+    [showReference, startHz, endHz],
+  );
+  const refRanges = useMemo(
+    () => (showReference ? rangesInRange(startHz, endHz) : []),
+    [showReference, startHz, endHz],
+  );
+
   const clampX = (x: number): number => Math.min(w, Math.max(0, x));
 
   if (channels.length === 0) {
@@ -113,6 +125,54 @@ export function BandMap({
         role="group"
         aria-label="Band activity map"
       >
+        {/* Known 868-band reference overlay, drawn first so it sits beneath channels. */}
+        {refRanges.length > 0 && (
+          <g className="bandmap-ref-ranges" aria-hidden="true">
+            {refRanges.map((r) => {
+              const rx0 = clampX(((r.loHz - startHz) / span) * w);
+              const rx1 = clampX(((r.hiHz - startHz) / span) * w);
+              return (
+                <rect
+                  key={`${r.loHz}-${r.hiHz}`}
+                  className="bandmap-ref-range"
+                  x={rx0}
+                  y={0}
+                  width={Math.max(0, rx1 - rx0)}
+                  height={drawH}
+                >
+                  <title>{`${r.label} — ${r.detail}`}</title>
+                </rect>
+              );
+            })}
+          </g>
+        )}
+        {refMarkers.length > 0 && (
+          <g className="bandmap-ref-markers">
+            {refMarkers.map((m, i) => {
+              const rx = clampX(((m.freqHz - startHz) / span) * w);
+              return (
+                <g key={`${m.kind}-${m.freqHz}-${m.label}`}>
+                  <title>{`${m.label} — ${m.detail}`}</title>
+                  <line
+                    className={`bandmap-ref-line bandmap-ref-line--${m.kind}`}
+                    x1={rx}
+                    y1={0}
+                    x2={rx}
+                    y2={drawH}
+                  />
+                  <text
+                    className={`bandmap-ref-label bandmap-ref-label--${m.kind}`}
+                    x={rx + 2}
+                    y={7 + (i % 3) * 8}
+                  >
+                    {m.label}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        )}
+
         {channels.map((ch) => {
           const cx = clampX(((ch.center_hz - startHz) / span) * w);
           const bwFrac = ch.bandwidth_hz / span;
@@ -162,6 +222,18 @@ export function BandMap({
           );
         })}
       </svg>
+
+      <label
+        className="bandmap-ref-toggle"
+        title="Overlay known 868-band reference channels and ETSI sub-bands (reference only — alignment is a hint, not proof)"
+      >
+        <input
+          type="checkbox"
+          checked={showReference}
+          onChange={(e) => setShowReference(e.target.checked)}
+        />
+        Ref
+      </label>
 
       {hover && (
         <div

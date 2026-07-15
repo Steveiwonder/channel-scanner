@@ -51,6 +51,71 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.bandmap-ref-range {
+  fill: rgba(148, 163, 184, 0.06);
+  pointer-events: none;
+}
+
+.bandmap-ref-line {
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.bandmap-ref-line--wmbus {
+  stroke: #f2b134;
+}
+
+.bandmap-ref-line--lora {
+  stroke: #38bdf8;
+}
+
+.bandmap-ref-line--srd,
+.bandmap-ref-line--other {
+  stroke: rgba(148, 163, 184, 0.7);
+}
+
+.bandmap-ref-label {
+  font-size: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.bandmap-ref-label--wmbus {
+  fill: #f2b134;
+}
+
+.bandmap-ref-label--lora {
+  fill: #38bdf8;
+}
+
+.bandmap-ref-label--srd,
+.bandmap-ref-label--other {
+  fill: rgba(148, 163, 184, 0.85);
+}
+
+.bandmap-ref-toggle {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  user-select: none;
+  z-index: 1;
+}
+
+.bandmap-ref-toggle input {
+  cursor: pointer;
+  margin: 0;
+}
+
 .bandmap-empty {
   display: flex;
   align-items: center;

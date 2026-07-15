@@ -13,8 +13,8 @@ import {
   type SettingsFormValues,
   type StringFieldKey,
 } from '../lib/settingsValidation';
-import { SCAN_BACKENDS } from '../lib/types';
-import { formatIso } from '../lib/format';
+import { SCAN_BACKENDS, type CalibrateResponse } from '../lib/types';
+import { formatDb, formatIso, hzToHuman } from '../lib/format';
 
 const BACKEND_LABELS: Record<(typeof SCAN_BACKENDS)[number], string> = {
   sim: 'Simulator (sim)',
@@ -42,6 +42,14 @@ export function Settings(): JSX.Element {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  // Frequency calibration (PPM) tool state.
+  const [calRefMhz, setCalRefMhz] = useState<string>(() =>
+    config ? (((config.start_hz + config.end_hz) / 2) / 1e6).toFixed(4) : '868.9500',
+  );
+  const [calibrating, setCalibrating] = useState(false);
+  const [calResult, setCalResult] = useState<CalibrateResponse | null>(null);
+  const [calError, setCalError] = useState<string | null>(null);
+
   async function clearAllData(): Promise<void> {
     setConfirmClear(false);
     setClearing(true);
@@ -56,6 +64,35 @@ export function Settings(): JSX.Element {
     } finally {
       setClearing(false);
     }
+  }
+
+  async function measureCalibration(): Promise<void> {
+    const mhz = Number(calRefMhz);
+    if (!Number.isFinite(mhz) || mhz <= 0) {
+      setCalResult(null);
+      setCalError('Enter a valid reference frequency in MHz.');
+      return;
+    }
+    setCalibrating(true);
+    setCalError(null);
+    setCalResult(null);
+    try {
+      const result = await api.calibrate(Math.round(mhz * 1e6));
+      setCalResult(result);
+    } catch (err) {
+      setCalError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setCalibrating(false);
+    }
+  }
+
+  function applySuggestedPpm(): void {
+    if (!calResult || calResult.suggested_ppm == null) return;
+    set('ppm', String(calResult.suggested_ppm));
+    setMessage({
+      tone: 'info',
+      text: `Applied suggested ppm ${calResult.suggested_ppm}. Review and press Save to apply.`,
+    });
   }
 
   // Sync form when config first loads (but don't clobber unsaved edits after that).
@@ -364,6 +401,111 @@ export function Settings(): JSX.Element {
           </div>
         </div>
       )}
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Frequency calibration (PPM)</h2>
+        <p className="small faint" style={{ marginTop: 0 }}>
+          Cheap RTL-SDR dongles have crystals that drift, so tuned frequencies sit slightly off.
+          Point the receiver at a <strong>known, steady carrier</strong> (e.g. a signal generator or
+          a reference transmitter on an exact frequency) and this estimates the tuner&apos;s ppm
+          error. Receive-only measurement — nothing is transmitted.
+        </p>
+        <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+          <div className="field" style={{ maxWidth: 220 }}>
+            <label htmlFor="cal-ref-mhz">Reference frequency (MHz)</label>
+            <input
+              id="cal-ref-mhz"
+              value={calRefMhz}
+              onChange={(e) => setCalRefMhz(e.target.value)}
+              disabled={calibrating}
+              inputMode="decimal"
+            />
+          </div>
+          <button onClick={() => void measureCalibration()} disabled={calibrating}>
+            {calibrating ? 'Measuring…' : 'Measure'}
+          </button>
+        </div>
+
+        {calError && (
+          <div className="notice danger" style={{ marginTop: 12 }}>
+            {calError}
+          </div>
+        )}
+
+        {calResult && !calResult.ok && (
+          <div className="notice warn" style={{ marginTop: 12 }}>
+            {calResult.message}
+          </div>
+        )}
+
+        {calResult && calResult.ok && (
+          <div style={{ marginTop: 12 }}>
+            {calResult.message && (
+              <p className="small faint" style={{ marginTop: 0 }}>
+                {calResult.message}
+              </p>
+            )}
+            <div className="table-wrap">
+              <table>
+                <tbody>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Measured</th>
+                    <td className="mono">
+                      {calResult.measured_hz != null ? hzToHuman(calResult.measured_hz) : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Offset</th>
+                    <td className="mono">
+                      {calResult.offset_hz != null ? `${calResult.offset_hz} Hz` : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>PPM error</th>
+                    <td className="mono">
+                      {calResult.ppm_error != null ? calResult.ppm_error.toFixed(2) : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Peak SNR</th>
+                    <td className="mono">{formatDb(calResult.peak_snr_db)}</td>
+                  </tr>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Current ppm</th>
+                    <td className="mono">
+                      {calResult.current_ppm != null ? calResult.current_ppm : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Suggested ppm</th>
+                    <td className="mono">
+                      {calResult.suggested_ppm != null ? calResult.suggested_ppm : '—'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="row" style={{ marginTop: 12, alignItems: 'center' }}>
+              <button
+                onClick={applySuggestedPpm}
+                disabled={!isOperator || calResult.suggested_ppm == null}
+                title={
+                  !isOperator
+                    ? 'acquire the control lease to apply'
+                    : 'Set the frequency-correction (ppm) field to the suggested value'
+                }
+              >
+                Apply suggested ppm
+              </button>
+              {calResult.suggested_ppm != null && isOperator && (
+                <span className="small faint">
+                  Fills the frequency-correction (ppm) field above — press Save to apply.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="card danger-zone" style={{ marginTop: 16 }}>
         <h2>Danger zone</h2>

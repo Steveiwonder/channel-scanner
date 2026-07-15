@@ -1,0 +1,30 @@
+.survey-summary {
+  flex-wrap: wrap;
+}
+
+.survey-summary .tile {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+
+.survey-summary .tile strong {
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+/* Pattern label badges (shared visual language with the Investigate guide). */
+.badge.meter-strong {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge.meter-moderate {
+  border-color: var(--warn, #fbbf24);
+  color: var(--warn, #fbbf24);
+}
+
+.badge.meter-weak {
+  opacity: 0.7;
+}

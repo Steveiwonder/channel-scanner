@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { hzToMHz } from '../lib/format';
 import { buildSpectrumData } from '../lib/spectrum';
+import {
+  markersInRange,
+  rangesInRange,
+  type ReferenceMarker,
+} from '../lib/referenceBands';
 
 export interface ChannelMarker {
   id: number;
@@ -34,13 +39,29 @@ export function SpectrumChart({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
 
+  // Optional overlay of known 868-band reference channels / ETSI sub-bands.
+  const [showReference, setShowReference] = useState(true);
+
+  // Visible frequency range in exact Hz, derived from the data we already have.
+  const refRangeHz = useMemo<[number, number] | null>(() => {
+    if (freqsHz.length === 0) return null;
+    const first = freqsHz[0] as number;
+    const last = freqsHz[freqsHz.length - 1] as number;
+    if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
+    return [Math.min(first, last), Math.max(first, last)];
+  }, [freqsHz]);
+
   // Keep the most recent inputs in refs so the draw hook reads live values.
   const markersRef = useRef<ChannelMarker[]>(markers);
   const noiseRef = useRef<number | null>(noiseFloorDb ?? null);
   const windowRef = useRef<[number, number] | null>(scanWindowHz ?? null);
+  const showReferenceRef = useRef<boolean>(showReference);
+  const refRangeRef = useRef<[number, number] | null>(refRangeHz);
   markersRef.current = markers;
   noiseRef.current = noiseFloorDb ?? null;
   windowRef.current = scanWindowHz ?? null;
+  showReferenceRef.current = showReference;
+  refRangeRef.current = refRangeHz;
 
   const data = useMemo(() => buildSpectrumData(freqsHz, powerDb), [freqsHz, powerDb]);
 
@@ -82,7 +103,13 @@ export function SpectrumChart({
       hooks: {
         draw: [
           (u) => {
-            drawOverlays(u, markersRef.current, noiseRef.current, windowRef.current);
+            drawOverlays(
+              u,
+              markersRef.current,
+              noiseRef.current,
+              windowRef.current,
+              showReferenceRef.current ? refRangeRef.current : null,
+            );
           },
         ],
       },
@@ -110,7 +137,49 @@ export function SpectrumChart({
     plotRef.current?.setData(data);
   }, [data]);
 
-  return <div ref={containerRef} style={{ width: '100%' }} />;
+  // Redraw when the reference overlay is toggled (draw hook reads the ref).
+  useEffect(() => {
+    plotRef.current?.redraw();
+  }, [showReference, refRangeHz]);
+
+  return (
+    <div style={{ width: '100%' }}>
+      <label
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          margin: '0 0 6px',
+          fontSize: 11,
+          color: '#9fb0c8',
+          fontFamily: 'ui-monospace, monospace',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+        title="Overlay known 868-band reference channels and ETSI sub-bands (reference only — alignment is a hint, not proof)"
+      >
+        <input
+          type="checkbox"
+          checked={showReference}
+          onChange={(e) => setShowReference(e.target.checked)}
+        />
+        868 references
+      </label>
+      <div ref={containerRef} style={{ width: '100%' }} />
+    </div>
+  );
+}
+
+/** Stroke/fill colours for a reference marker, keyed by protocol group. */
+function referenceColour(kind: ReferenceMarker['kind']): string {
+  switch (kind) {
+    case 'wmbus':
+      return 'rgba(251,191,36,0.55)'; // amber
+    case 'lora':
+      return 'rgba(56,189,248,0.55)'; // cyan
+    default:
+      return 'rgba(148,163,184,0.5)'; // slate/grey
+  }
 }
 
 function drawOverlays(
@@ -118,6 +187,7 @@ function drawOverlays(
   markers: ChannelMarker[],
   noiseFloorDb: number | null,
   windowHz: [number, number] | null,
+  referenceRangeHz: [number, number] | null,
 ): void {
   const { ctx } = u;
   const { left, top, width, height } = u.bbox;
@@ -129,6 +199,11 @@ function drawOverlays(
     const x1 = u.valToPos(hzToMHz(windowHz[1]), 'x', true);
     ctx.fillStyle = 'rgba(244,114,182,0.10)';
     ctx.fillRect(Math.min(x0, x1), top, Math.abs(x1 - x0), height);
+  }
+
+  // Known-band reference overlay, drawn beneath candidate markers.
+  if (referenceRangeHz) {
+    drawReferenceOverlay(u, referenceRangeHz[0], referenceRangeHz[1]);
   }
 
   // Noise-floor reference line.
@@ -158,6 +233,56 @@ function drawOverlays(
     ctx.fillStyle = '#34d399';
     ctx.fillText(m.label, x + 3, top + 12);
   }
+
+  ctx.restore();
+}
+
+/**
+ * Draw the known 868-band reference overlay: faint ETSI sub-band spans plus
+ * vertical protocol-channel centres with terse labels. Positions map through
+ * the chart's own x scale (MHz), so it tracks zoom/pan.
+ */
+function drawReferenceOverlay(u: uPlot, startHz: number, endHz: number): void {
+  const { ctx } = u;
+  const { left, top, width, height } = u.bbox;
+  const right = left + width;
+  const bottom = top + height;
+
+  ctx.save();
+
+  // Faint shaded ETSI sub-band spans.
+  for (const r of rangesInRange(startHz, endHz)) {
+    const xa = u.valToPos(hzToMHz(r.loHz), 'x', true);
+    const xb = u.valToPos(hzToMHz(r.hiHz), 'x', true);
+    const x0 = Math.max(left, Math.min(xa, xb));
+    const x1 = Math.min(right, Math.max(xa, xb));
+    if (x1 <= x0) continue;
+    ctx.fillStyle = 'rgba(148,163,184,0.06)';
+    ctx.fillRect(x0, top, x1 - x0, height);
+    ctx.fillStyle = 'rgba(148,163,184,0.55)';
+    ctx.font = '9px ui-monospace, monospace';
+    ctx.fillText(r.label, x0 + 3, bottom - 4);
+  }
+
+  // Vertical protocol-channel centres, coloured by kind, with a terse label.
+  const refMarkers = markersInRange(startHz, endHz);
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.setLineDash([3, 3]);
+  refMarkers.forEach((m, i) => {
+    const x = u.valToPos(hzToMHz(m.freqHz), 'x', true);
+    if (x < left || x > right) return;
+    const colour = referenceColour(m.kind);
+    ctx.strokeStyle = colour;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.fillStyle = colour;
+    // Stagger labels down a few rows so neighbours/duplicates stay legible,
+    // and below the candidate-marker labels (which sit at top + 12).
+    ctx.fillText(m.label, x + 3, top + 26 + (i % 3) * 11);
+  });
+  ctx.setLineDash([]);
 
   ctx.restore();
 }
