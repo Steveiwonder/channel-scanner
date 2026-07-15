@@ -1,0 +1,210 @@
+.channeldetail-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 4, 10, 0.55);
+  z-index: 40;
+}
+
+.channeldetail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  max-width: 100vw;
+  height: 100%;
+  overflow-y: auto;
+  background: #0a0e17;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+  z-index: 41;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.5);
+}
+
+.channeldetail-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #0d1220;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.channeldetail-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.channeldetail-title small {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: rgba(229, 231, 235, 0.6);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.channeldetail-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e5e7eb;
+  border-radius: 5px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.channeldetail-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.channeldetail-body {
+  padding: 16px;
+}
+
+.channeldetail-section {
+  margin-bottom: 20px;
+}
+
+.channeldetail-section h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(229, 231, 235, 0.55);
+  margin: 0 0 8px;
+}
+
+.channeldetail-lede {
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(229, 231, 235, 0.85);
+  margin: 0;
+}
+
+.channeldetail-metric {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.channeldetail-metric:last-child {
+  border-bottom: none;
+}
+
+.channeldetail-metric-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.channeldetail-metric-label {
+  font-size: 12px;
+  color: rgba(229, 231, 235, 0.6);
+}
+
+.channeldetail-metric-value {
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #e5e7eb;
+  text-align: right;
+}
+
+.channeldetail-metric-hint {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(229, 231, 235, 0.45);
+}
+
+.channeldetail-sparkline,
+.channeldetail-hist {
+  width: 100%;
+  display: block;
+  background: #05070d;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+}
+
+.channeldetail-spark-line {
+  fill: none;
+  stroke: #38bdf8;
+  stroke-width: 1.5;
+}
+
+.channeldetail-hist-bar {
+  fill: #2ee6c0;
+}
+
+.channeldetail-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: rgba(229, 231, 235, 0.5);
+}
+
+.channeldetail-state {
+  font-size: 12px;
+  color: rgba(229, 231, 235, 0.5);
+  padding: 10px 0;
+}
+
+.channeldetail-state--error {
+  color: #f28b82;
+}
+
+.channeldetail-bwbar {
+  position: relative;
+  height: 26px;
+  background: #05070d;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.channeldetail-bwbar-block {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  background: rgba(46, 230, 192, 0.35);
+  border: 1px solid rgba(46, 230, 192, 0.7);
+  border-radius: 3px;
+}
+
+.channeldetail-bwbar-center {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  left: 50%;
+  background: #f2b134;
+}
+
+.channeldetail-bwbar-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgba(229, 231, 235, 0.6);
+}
+
+.channeldetail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.channeldetail-btn {
+  background: #164e63;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #e0f2fe;
+  border-radius: 5px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.channeldetail-btn:hover {
+  background: #1b5e75;
+}

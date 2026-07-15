@@ -3,6 +3,8 @@ import { useStore } from '../store/store';
 import { SpectrumChart, type ChannelMarker } from '../components/SpectrumChart';
 import { makeFreqAxis } from '../lib/spectrum';
 import { Waterfall } from '../components/Waterfall';
+import { ColorLegend } from '../components/ColorLegend';
+import { InfoTip } from '../components/InfoTip';
 import { formatDb, formatTimeOnly, hzToHuman, hzToMHz } from '../lib/format';
 import type { SpectrumFrame } from '../lib/types';
 
@@ -130,7 +132,10 @@ export function Spectrum(): JSX.Element {
       </div>
 
       <div className="card">
-        <h2>Waterfall</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Waterfall
+          <InfoTip text="A scrolling spectrogram: horizontal = frequency, vertical = time (newest at the top). Brighter colour = stronger signal. Repeating horizontal streaks are recurring transmissions." />
+        </h2>
         {/* Colour range is anchored to the live noise floor so real RTL-SDR
             power levels (~-120..-80 dBFS) map across the colormap instead of
             clamping to black. */}
@@ -141,6 +146,15 @@ export function Spectrum(): JSX.Element {
           minDb={displayFrame ? displayFrame.noise_floor_db - 8 : undefined}
           maxDb={displayFrame ? displayFrame.noise_floor_db + 55 : undefined}
         />
+        {displayFrame && (
+          <div style={{ marginTop: 8, maxWidth: 320 }}>
+            <ColorLegend
+              minDb={displayFrame.noise_floor_db - 8}
+              maxDb={displayFrame.noise_floor_db + 55}
+              label="Power (dB)"
+            />
+          </div>
+        )}
         <div className="hint">Newest frames appear at the top and scroll down over time.</div>
       </div>
     </div>

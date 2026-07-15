@@ -1,0 +1,39 @@
+.cadencebar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.cadencebar-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4b5563;
+}
+
+.cadencebar-dot--regular {
+  background: #2ee6a6;
+  box-shadow: 0 0 4px rgba(46, 230, 166, 0.6);
+}
+
+.cadencebar-dot--emerging {
+  background: #f2b134;
+}
+
+.cadencebar-dot--irregular {
+  background: #4b5563;
+}
+
+.cadencebar-interval {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #e5e7eb;
+}
+
+.cadencebar-label {
+  color: rgba(229, 231, 235, 0.6);
+}

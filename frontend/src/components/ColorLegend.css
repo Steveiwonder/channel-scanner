@@ -1,0 +1,70 @@
+.colorlegend {
+  display: flex;
+  color: var(--text-dim, #9fb0c8);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.colorlegend--horizontal {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.colorlegend--vertical {
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.colorlegend__label {
+  color: var(--text, #e6edf6);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.colorlegend__bar {
+  border: 1px solid var(--border, #243049);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+/* Horizontal: gradient bar on top, tick row spread beneath it. */
+.colorlegend--horizontal .colorlegend__scale {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.colorlegend--horizontal .colorlegend__ticks {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.colorlegend--horizontal .colorlegend__tick:first-child {
+  text-align: left;
+}
+
+.colorlegend--horizontal .colorlegend__tick:last-child {
+  text-align: right;
+}
+
+/* Vertical: gradient bar beside a top-to-bottom (high-to-low) tick column. */
+.colorlegend--vertical .colorlegend__scale {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.colorlegend--vertical .colorlegend__ticks {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.colorlegend__tick {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

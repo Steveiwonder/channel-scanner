@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { turboColor } from '../lib/colormap';
 
 export interface WaterfallProps {
   /** Latest row of power values (dB). Each new frame scrolls the image down. */
@@ -11,15 +12,9 @@ export interface WaterfallProps {
   paused?: boolean;
 }
 
-/** Map a normalized 0..1 value to an [r,g,b] "inferno"-ish colormap. */
-function colormap(t: number): [number, number, number] {
-  const x = t < 0 ? 0 : t > 1 ? 1 : t;
-  // Piecewise ramp: black -> purple -> red -> orange -> yellow.
-  const r = Math.round(255 * Math.min(1, x * 1.6));
-  const g = Math.round(255 * Math.max(0, Math.min(1, (x - 0.35) * 1.7)));
-  const b = Math.round(255 * Math.max(0, Math.min(1, (x < 0.4 ? x * 2 : (1 - x) * 1.2))));
-  return [r, g, b];
-}
+// Shared turbo colormap (same as the scope spectrogram + ColorLegend), so the
+// waterfall colours and the legend beside it mean the same thing.
+const colormap = turboColor;
 
 /**
  * Scrolling spectrogram rendered on a canvas. New frames are drawn on the top

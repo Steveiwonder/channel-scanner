@@ -1,0 +1,82 @@
+.infotip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.infotip__label {
+  white-space: normal;
+}
+
+.infotip__badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--border, #243049);
+  background: var(--bg-elev-2, #172136);
+  color: var(--text-dim, #9fb0c8);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.infotip__badge:hover,
+.infotip__badge:focus-visible {
+  color: var(--text, #e6edf6);
+  border-color: var(--accent, #38bdf8);
+  outline: none;
+}
+
+.infotip__badge:focus-visible {
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+}
+
+.infotip__bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: var(--radius, 8px);
+  border: 1px solid var(--border, #243049);
+  background: var(--bg-elev-2, #172136);
+  color: var(--text, #e6edf6);
+  box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.35));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+/* Small caret pointing down toward the badge. */
+.infotip__bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--border, #243049);
+}
+
+.infotip__badge:hover .infotip__bubble,
+.infotip__bubble--visible {
+  opacity: 1;
+  visibility: visible;
+}

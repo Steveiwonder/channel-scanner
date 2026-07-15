@@ -1,0 +1,87 @@
+.bandmap {
+  position: relative;
+  width: 100%;
+  background: #0a0e17;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bandmap-svg {
+  display: block;
+  width: 100%;
+}
+
+.bandmap-marker {
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.bandmap-marker:hover,
+.bandmap-marker:focus-visible {
+  opacity: 0.85;
+  outline: none;
+}
+
+.bandmap-marker--active {
+  fill: #2ee6c0;
+}
+
+.bandmap-marker--recently_active {
+  fill: #f2b134;
+}
+
+.bandmap-marker--inactive {
+  fill: #4b5563;
+}
+
+.bandmap-axis-line {
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1;
+}
+
+.bandmap-tick-line {
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+}
+
+.bandmap-tick-label {
+  fill: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bandmap-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  padding: 18px 8px;
+}
+
+.bandmap-tooltip {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e5e7eb;
+  white-space: nowrap;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.bandmap-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.bandmap-tooltip-row {
+  color: rgba(229, 231, 235, 0.75);
+}

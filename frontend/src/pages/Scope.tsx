@@ -4,6 +4,8 @@ import { useStore } from '../store/store';
 import { api, ApiError } from '../lib/api';
 import { ScopeSpectrogram } from '../components/ScopeSpectrogram';
 import { AmplitudeStrip } from '../components/AmplitudeStrip';
+import { ColorLegend } from '../components/ColorLegend';
+import { InfoTip } from '../components/InfoTip';
 import { formatDb, formatSampleRate, hzToMHz, mhzToHz } from '../lib/format';
 
 const DEFAULT_CENTER_HZ = 433_920_000; // mid ISM 433 band fallback.
@@ -164,7 +166,10 @@ export function Scope(): JSX.Element {
 
       <div className="card">
         <div className="chart-toolbar">
-          <h2 style={{ margin: 0 }}>Spectrogram</h2>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Spectrogram
+            <InfoTip text="Fine spectrogram of the parked window. Time flows left→right (newest on the right); frequency is vertical (high at top); colour = power. OOK/pulse bursts show as short horizontal dashes." />
+          </h2>
           <div className="spacer" style={{ flex: 1 }} />
           {inFocus && axis && (
             <span className="small faint mono">
@@ -197,6 +202,15 @@ export function Scope(): JSX.Element {
               </div>
             ) : (
               <div className="hint">Waiting for the first scope frame…</div>
+            )}
+            {axis && (
+              <div style={{ marginTop: 8, marginLeft: 70, maxWidth: 320 }}>
+                <ColorLegend
+                  minDb={axis.noiseFloorDb}
+                  maxDb={axis.noiseFloorDb + 60}
+                  label="Power (dB)"
+                />
+              </div>
             )}
             <div className="hint">
               Time flows left → right (newest on the right); frequency (MHz) is on the vertical axis,

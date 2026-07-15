@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
+import { BandMap } from '../components/BandMap';
+import { CadenceBar } from '../components/CadenceBar';
+import { ChannelDetail } from '../components/ChannelDetail';
+import { InfoTip } from '../components/InfoTip';
 import { api, ApiError } from '../lib/api';
 import type { CandidateChannel, Detection } from '../lib/types';
 import {
   formatConfidence,
   formatDb,
   formatDuration,
-  formatIntervalSeconds,
   formatIso,
   formatRelative,
   formatSnr,
@@ -52,11 +55,13 @@ const EMPTY_CHANNEL_FILTERS: ChannelFilters = {
 export function Channels(): JSX.Element {
   const channelMap = useStore((s) => s.channels);
   const isOperator = useStore((s) => s.isOperator());
+  const config = useStore((s) => s.config);
   const navigate = useNavigate();
 
   const [sortKey, setSortKey] = useState<SortKey>('center_hz');
   const [asc, setAsc] = useState(true);
   const [obsFor, setObsFor] = useState<CandidateChannel | null>(null);
+  const [detailFor, setDetailFor] = useState<CandidateChannel | null>(null);
   const [filters, setFilters] = useState<ChannelFilters>(EMPTY_CHANNEL_FILTERS);
   // Freeze the table so it stops reshuffling while you read/compare. When
   // frozen we display a snapshot taken at freeze time instead of the live map.
@@ -187,6 +192,19 @@ export function Channels(): JSX.Element {
         {frozen && <span className="danger-text">display frozen</span>}
       </div>
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Band activity
+          <InfoTip text="Every candidate channel plotted by frequency across the scanned band. Marker height = confidence, width = occupied bandwidth, colour = status. Click a marker to open its details." />
+        </h2>
+        <BandMap
+          channels={channels}
+          startHz={config?.start_hz ?? 867_000_000}
+          endHz={config?.end_hz ?? 870_000_000}
+          onSelect={(ch) => setDetailFor(ch)}
+        />
+      </div>
+
       {!isOperator && (
         <div className="notice warn">
           You are not the control operator. Focus will be applied by the backend but may be
@@ -268,6 +286,9 @@ export function Channels(): JSX.Element {
                 </th>
                 <th className="num sortable" onClick={() => toggleSort('bandwidth_hz')}>
                   Bandwidth{sortArrow('bandwidth_hz')}
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <InfoTip text="Estimated occupied bandwidth — how wide in frequency the signal spreads." />
+                  </span>
                 </th>
                 <th className="num sortable" onClick={() => toggleSort('current_power_db')}>
                   Current{sortArrow('current_power_db')}
@@ -280,6 +301,9 @@ export function Channels(): JSX.Element {
                 </th>
                 <th className="num sortable" onClick={() => toggleSort('snr_db')}>
                   SNR{sortArrow('snr_db')}
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <InfoTip text="Signal-to-noise ratio (dB): how far the signal rises above the noise floor. Higher = clearer/stronger." />
+                  </span>
                 </th>
                 <th className="num sortable" onClick={() => toggleSort('observation_count')}>
                   Obs{sortArrow('observation_count')}
@@ -298,6 +322,9 @@ export function Channels(): JSX.Element {
                 </th>
                 <th className="num sortable" onClick={() => toggleSort('confidence')}>
                   Conf.{sortArrow('confidence')}
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <InfoTip text="Confidence (0–1) that this is a real, recurring channel — combines recurrence regularity, SNR, stability and how many times it has been observed. Not a claim about which device it is." />
+                  </span>
                 </th>
                 <th className="sortable" onClick={() => toggleSort('status')}>
                   Status{sortArrow('status')}
@@ -333,7 +360,13 @@ export function Channels(): JSX.Element {
                   <td title={formatIso(ch.first_seen)}>{formatRelative(ch.first_seen)}</td>
                   <td title={formatIso(ch.last_seen)}>{formatRelative(ch.last_seen)}</td>
                   <td className="num">{formatDuration(ch.typical_burst_ms)}</td>
-                  <td className="num">{formatIntervalSeconds(ch.recurrence_interval_s)}</td>
+                  <td>
+                    <CadenceBar
+                      recurrenceIntervalS={ch.recurrence_interval_s}
+                      observationCount={ch.observation_count}
+                      typicalBurstMs={ch.typical_burst_ms}
+                    />
+                  </td>
                   <td className="num">
                     <div
                       className="heatcell"
@@ -351,6 +384,7 @@ export function Channels(): JSX.Element {
                   </td>
                   <td>
                     <div className="row" style={{ flexWrap: 'nowrap' }}>
+                      <button onClick={() => setDetailFor(ch)}>Details</button>
                       <button onClick={() => focus(ch)}>Focus</button>
                       <button onClick={() => setObsFor(ch)}>History</button>
                       <a
@@ -371,6 +405,16 @@ export function Channels(): JSX.Element {
       )}
 
       {obsFor && <ObservationsModal channel={obsFor} onClose={() => setObsFor(null)} />}
+      {detailFor && (
+        <ChannelDetail
+          channel={detailFor}
+          onClose={() => setDetailFor(null)}
+          onFocus={(ch) => {
+            setDetailFor(null);
+            focus(ch);
+          }}
+        />
+      )}
     </div>
   );
 }
