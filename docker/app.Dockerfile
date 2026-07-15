@@ -87,8 +87,9 @@ RUN pip install --no-cache-dir --upgrade pip \
     # support, so we install it here so SDR_BACKEND=rtlsdr works out of the box.
     # (Without it the app logs "No module named 'rtlsdr'" and falls back to sim.)
     # setuptools provides pkg_resources, which pyrtlsdr 0.3.0 imports at import
-    # time; python:3.12-slim does not ship it, so install it explicitly.
-    && pip install --no-cache-dir "setuptools>=70" "pyrtlsdr==0.3.0"
+    # time; python:3.12-slim does not ship it. Recent setuptools (>=80) REMOVED
+    # pkg_resources, so pin below that so the module is actually present.
+    && pip install --no-cache-dir "setuptools>=68,<80" "pyrtlsdr==0.3.0"
 
 # ---- Application code ------------------------------------------------------
 COPY backend/ /app/
