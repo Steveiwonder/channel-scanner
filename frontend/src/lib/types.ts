@@ -189,6 +189,39 @@ export interface FocusRequest {
 export interface RecordingStartRequest {
   duration_ms?: number;
   center_hz?: number;
+  format?: 'cf32' | 'cu8';
+}
+
+export interface DecodeFrame {
+  id: number;
+  timestamp: string;
+  decoder: string;
+  protocol: string;
+  freq_hz: number | null;
+  known: boolean;
+  fields: Record<string, unknown>;
+  session_id: number | null;
+}
+
+export interface DecodesResponse {
+  decodes: DecodeFrame[];
+  decoder_available: boolean;
+}
+
+export interface DecoderRunResponse {
+  ok: boolean;
+  ran: boolean;
+  message: string;
+  decodes: DecodeFrame[];
+}
+
+export interface OccupancyResponse {
+  f_start_hz: number;
+  f_stop_hz: number;
+  freq_bins: number;
+  bucket_seconds: number;
+  bucket_starts: string[];
+  grid: number[][];
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +317,11 @@ export interface WsControl {
   lease_expires: string | null;
 }
 
+export interface WsDecode {
+  type: 'decode';
+  decode: DecodeFrame;
+}
+
 export type ServerMessage =
   | WsHello
   | SpectrumFrame
@@ -294,7 +332,8 @@ export type ServerMessage =
   | WsStatus
   | WsConfig
   | WsPresence
-  | WsControl;
+  | WsControl
+  | WsDecode;
 
 export interface ClientIdentify {
   type: 'identify';

@@ -195,6 +195,9 @@ class ConnectionManager:
     def broadcast_event(self, event: dict[str, Any]) -> None:
         self._broadcast({"type": "event", "event": event})
 
+    def broadcast_decode(self, decode: dict[str, Any]) -> None:
+        self._broadcast({"type": "decode", "decode": decode})
+
     def broadcast_status(
         self,
         device: dict[str, Any],

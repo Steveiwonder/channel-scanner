@@ -12,6 +12,8 @@ import { Spectrum } from './pages/Spectrum';
 import { Scope } from './pages/Scope';
 import { Channels } from './pages/Channels';
 import { Timeline } from './pages/Timeline';
+import { Occupancy } from './pages/Occupancy';
+import { Decoder } from './pages/Decoder';
 import { Recordings } from './pages/Recordings';
 import { Settings } from './pages/Settings';
 
@@ -87,6 +89,8 @@ export default function App(): JSX.Element {
           <Route path="/scope" element={<Scope />} />
           <Route path="/channels" element={<Channels />} />
           <Route path="/timeline" element={<Timeline />} />
+          <Route path="/occupancy" element={<Occupancy />} />
+          <Route path="/decoder" element={<Decoder />} />
           <Route path="/recordings" element={<Recordings />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />

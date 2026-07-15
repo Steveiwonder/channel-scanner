@@ -42,6 +42,7 @@ export function Recordings(): JSX.Element {
   const [inspect, setInspect] = useState<Recording | null>(null);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [recFormat, setRecFormat] = useState<'cf32' | 'cu8'>('cf32');
 
   // Reflect the live backend setting (ENABLE_IQ_RECORDING / config.enable_iq_recording),
   // which is now runtime-configurable, rather than assuming it is always off.
@@ -91,7 +92,9 @@ export function Recordings(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      const body = config ? { center_hz: Math.round((config.start_hz + config.end_hz) / 2) } : {};
+      const body: { center_hz?: number; format: 'cf32' | 'cu8' } = config
+        ? { center_hz: Math.round((config.start_hz + config.end_hz) / 2), format: recFormat }
+        : { format: recFormat };
       await api.startRecording(body);
       setRecording(true);
       await reload();
@@ -147,10 +150,24 @@ export function Recordings(): JSX.Element {
               Stop recording
             </button>
           ) : (
-            <button
-              className="primary"
-              onClick={() => void startRecording()}
-              disabled={busy || !isOperator || !iqEnabled}
+            <>
+              <label className="small faint" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                Format
+                <select
+                  value={recFormat}
+                  onChange={(e) => setRecFormat(e.target.value as 'cf32' | 'cu8')}
+                  disabled={!iqEnabled}
+                  title="cf32 = full precision (SigMF); cu8 = native RTL-SDR, 4x smaller, matches triq/rtl_433"
+                  style={{ width: 'auto' }}
+                >
+                  <option value="cf32">cf32 (precise)</option>
+                  <option value="cu8">cu8 (small)</option>
+                </select>
+              </label>
+              <button
+                className="primary"
+                onClick={() => void startRecording()}
+                disabled={busy || !isOperator || !iqEnabled}
               title={
                 !iqEnabled
                   ? 'IQ recording is disabled (set ENABLE_IQ_RECORDING=true or enable it in Settings)'
@@ -158,9 +175,10 @@ export function Recordings(): JSX.Element {
                     ? 'Requires control lease'
                     : 'Start an IQ recording'
               }
-            >
-              Start IQ recording
-            </button>
+              >
+                Start IQ recording
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -256,8 +274,24 @@ export function Recordings(): JSX.Element {
                     <td>{r.format}</td>
                     <td className="num">{formatBytes(r.bytes)}</td>
                     <td>
-                      <div className="row" style={{ flexWrap: 'nowrap' }}>
+                      <div className="row" style={{ flexWrap: 'wrap', gap: 4 }}>
                         <button onClick={() => setInspect(r)}>Inspect</button>
+                        <a
+                          className="badge dim"
+                          href={api.recordingDownloadUrl(r.id)}
+                          download
+                          title="Download raw IQ (.sigmf-data)"
+                        >
+                          IQ
+                        </a>
+                        <a
+                          className="badge dim"
+                          href={api.recordingDownloadUrl(r.id, true)}
+                          download
+                          title="Download SigMF metadata (.sigmf-meta)"
+                        >
+                          Meta
+                        </a>
                         <button className="danger" onClick={() => setToDelete(r)}>
                           Delete
                         </button>

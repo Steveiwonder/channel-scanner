@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useStore } from '../store/store';
 import { MetricTile } from '../components/MetricTile';
 import { GenericBadge } from '../components/StatusBadge';
+import { HealthCard } from '../components/HealthCard';
+import { AlertRules } from '../components/AlertRules';
+import { AlertToaster } from '../components/AlertToaster';
+import { useAlertRules, useChannelAlerts } from '../hooks/useChannelAlerts';
 import { api, ApiError } from '../lib/api';
 import {
   formatBytes,
@@ -22,6 +26,9 @@ export function Dashboard(): JSX.Element {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { rules, addRule, toggleRule, removeRule } = useAlertRules();
+  const { toasts, dismiss } = useChannelAlerts(rules);
 
   async function toggleScan(): Promise<void> {
     setBusy(true);
@@ -135,6 +142,26 @@ export function Dashboard(): JSX.Element {
           sub="IQ recordings"
         />
       </div>
+
+      <HealthCard />
+
+      <section className="card" style={{ marginTop: 16 }}>
+        <div className="col" style={{ gap: 2, marginBottom: 12 }}>
+          <h2 style={{ margin: 0 }}>Alerts</h2>
+          <span className="muted small">
+            Get notified when a channel matching your criteria becomes active. An alert reports a
+            matching signal only — it never identifies a specific device.
+          </span>
+        </div>
+        <AlertRules
+          rules={rules}
+          onAdd={addRule}
+          onToggle={toggleRule}
+          onRemove={removeRule}
+        />
+      </section>
+
+      <AlertToaster toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }

@@ -1,0 +1,51 @@
+.occ-control {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.occ-plot {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.occ-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  width: 56px;
+  flex: 0 0 56px;
+  text-align: right;
+  padding: 2px 0;
+}
+
+.occ-canvas-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border, #243049);
+  border-radius: var(--radius, 8px);
+  background: var(--bg, #0d1117);
+  overflow: hidden;
+}
+
+.occ-canvas {
+  display: block;
+  width: 100%;
+  height: 320px;
+  /* Cells are one device pixel each; keep them crisp when scaled up. */
+  image-rendering: pixelated;
+}
+
+.occ-xaxis {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 64px;
+  margin-top: 6px;
+}
+
+.occ-xcaption {
+  margin-left: 64px;
+  margin-top: 2px;
+}

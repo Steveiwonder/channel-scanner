@@ -11,6 +11,8 @@ const ROUTES: Route[] = [
   { to: '/scope', label: 'Scope' },
   { to: '/channels', label: 'Channels' },
   { to: '/timeline', label: 'Timeline' },
+  { to: '/occupancy', label: 'Occupancy' },
+  { to: '/decoder', label: 'Decoder' },
   { to: '/recordings', label: 'Recordings' },
   { to: '/settings', label: 'Settings' },
 ];

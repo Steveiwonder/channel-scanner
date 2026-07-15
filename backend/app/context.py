@@ -47,8 +47,9 @@ def build_context(settings: Settings) -> AppContext:
     recorder = Recorder(settings)
     decoder = build_default_decoder()
     retention = RetentionService(settings, repos)
-    # Let config changes propagate recording/retention governance at runtime.
-    scan_manager.attach_services(recorder, retention)
+    # Let config changes propagate recording/retention governance at runtime,
+    # and give the scan manager the decoder for one-shot decode runs.
+    scan_manager.attach_services(recorder, retention, decoder)
     return AppContext(
         settings=settings,
         db=db,

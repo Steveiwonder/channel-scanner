@@ -101,17 +101,26 @@ class Recorder:
         sample_rate: int | None = None,
         gain: str = "auto",
         reason: str = "manual",
+        fmt: str = "cf32",
     ) -> RecordingResult:
-        """Synchronously capture IQ. Call via run_in_executor (blocking)."""
+        """Synchronously capture IQ. Call via run_in_executor (blocking).
+
+        fmt: "cf32" (SigMF cf32_le, full precision) or "cu8" (complex uint8, the
+        native RTL-SDR format — 4x smaller, matches triq/rtl_433 tooling).
+        """
         if not self._enabled:
             raise RuntimeError("IQ recording is disabled. Set ENABLE_IQ_RECORDING=true to enable.")
+        fmt = (fmt or "cf32").lower()
+        if fmt not in ("cf32", "cu8"):
+            raise ValueError("format must be 'cf32' or 'cu8'")
+        # Max-duration guard so a single manual capture can't be unbounded.
         duration_ms = int(min(max(1, duration_ms), _MAX_CAPTURE_MS))
         sr = int(sample_rate or backend.sample_rate or self._settings.sdr_sample_rate)
         n_samples = int(sr * duration_ms / 1000.0)
         n_samples = max(1, n_samples)
 
-        est_bytes = n_samples * 8  # complex64 = 8 bytes
-        self._enforce_storage_cap(est_bytes)
+        bytes_per_sample = 2 if fmt == "cu8" else 8  # cu8: I+Q uint8; cf32: 2x float32
+        self._enforce_storage_cap(n_samples * bytes_per_sample)
 
         self._dir.mkdir(parents=True, exist_ok=True)
         backend.set_center_freq(center_hz)
@@ -123,16 +132,23 @@ class Recorder:
         data_path = self._dir / f"{stem}.sigmf-data"
         meta_path = self._dir / f"{stem}.sigmf-meta"
 
-        # Interleaved float32 I,Q.
-        interleaved = np.empty(iq.size * 2, dtype=np.float32)
-        interleaved[0::2] = iq.real
-        interleaved[1::2] = iq.imag
-        interleaved.tofile(str(data_path))
+        if fmt == "cu8":
+            datatype = "cu8"
+            inter_u8 = np.empty(iq.size * 2, dtype=np.uint8)
+            inter_u8[0::2] = np.clip(np.round(iq.real * 127.5 + 127.5), 0, 255).astype(np.uint8)
+            inter_u8[1::2] = np.clip(np.round(iq.imag * 127.5 + 127.5), 0, 255).astype(np.uint8)
+            inter_u8.tofile(str(data_path))
+        else:
+            datatype = _SIGMF_DATATYPE
+            interleaved = np.empty(iq.size * 2, dtype=np.float32)
+            interleaved[0::2] = iq.real
+            interleaved[1::2] = iq.imag
+            interleaved.tofile(str(data_path))
         nbytes = data_path.stat().st_size
 
         meta = {
             "global": {
-                "core:datatype": _SIGMF_DATATYPE,
+                "core:datatype": datatype,
                 "core:sample_rate": sr,
                 "core:version": "1.0.0",
                 "core:description": f"receive-only capture ({reason})",
@@ -165,7 +181,7 @@ class Recorder:
             sample_rate=sr,
             gain=str(gain),
             duration_ms=duration_ms,
-            format=_SIGMF_DATATYPE,
+            format=datatype,
             bytes=nbytes,
             timestamp=ts,
             sigmf_meta=meta,

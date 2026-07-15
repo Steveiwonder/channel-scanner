@@ -7,12 +7,15 @@ import type {
   AppEvent,
   CandidateChannel,
   ClientsResponse,
+  DecodesResponse,
+  DecoderRunResponse,
   Detection,
   DeviceInfo,
   ExportKind,
   FocusRequest,
   HealthResponse,
   Metrics,
+  OccupancyResponse,
   OkResponse,
   Recording,
   RecordingStartRequest,
@@ -150,6 +153,20 @@ export const api = {
   getRecordings: (): Promise<{ recordings: Recording[] }> => request('/api/recordings'),
   deleteRecording: (id: number): Promise<OkResponse> =>
     request(`/api/recordings/${id}`, { method: 'DELETE' }),
+  recordingDownloadUrl: (id: number, meta = false): string =>
+    url(`/api/recordings/${id}/download${meta ? '?meta=true' : ''}`),
+
+  // --- decoder (optional receive-only decoding) ---
+  getDecodes: (limit = 200): Promise<DecodesResponse> =>
+    request(`/api/decodes?limit=${limit}`),
+  runDecoder: (): Promise<DecoderRunResponse> =>
+    request('/api/decoder/run', { method: 'POST' }),
+
+  // --- occupancy (frequency x time grid) ---
+  getOccupancy: (freqBins = 96, minutes = 30, bucketSeconds = 30): Promise<OccupancyResponse> =>
+    request(
+      `/api/occupancy?freq_bins=${freqBins}&minutes=${minutes}&bucket_seconds=${bucketSeconds}`,
+    ),
 
   // --- clients / control lease ---
   getClients: (): Promise<ClientsResponse> => request('/api/clients'),

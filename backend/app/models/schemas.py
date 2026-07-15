@@ -268,6 +268,46 @@ class ClientActionBody(BaseModel):
     client_id: str
 
 
+class DecodeFrame(BaseModel):
+    """A receive-only decoder result (e.g. from rtl_433 or the simulator).
+
+    Distinct from the app's own channel detections: this is a labelled protocol
+    message, or `unknown`/`known=false` when the payload could not be decoded.
+    """
+
+    id: int = 0
+    timestamp: str
+    decoder: str
+    protocol: str
+    freq_hz: int | None = None
+    known: bool = True
+    fields: dict = Field(default_factory=dict)
+    session_id: int | None = None
+
+
+class DecodesResponse(BaseModel):
+    decodes: list[DecodeFrame]
+    decoder_available: bool
+
+
+class DecoderRunResponse(BaseModel):
+    ok: bool
+    ran: bool
+    message: str
+    decodes: list[DecodeFrame] = Field(default_factory=list)
+
+
+class OccupancyResponse(BaseModel):
+    """Frequency x time occupancy grid built from stored detections."""
+
+    f_start_hz: int
+    f_stop_hz: int
+    freq_bins: int
+    bucket_seconds: int
+    bucket_starts: list[str]
+    grid: list[list[int]]  # grid[time_bucket][freq_bin] = detection count
+
+
 class ChannelsResponse(BaseModel):
     channels: list[CandidateChannel]
 
@@ -291,6 +331,7 @@ class RecordingsResponse(BaseModel):
 class RecordingStartBody(BaseModel):
     duration_ms: int | None = None
     center_hz: int | None = None
+    format: str = "cf32"  # "cf32" (full precision) or "cu8" (native RTL-SDR, 4x smaller)
 
 
 class ClientsResponse(BaseModel):

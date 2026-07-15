@@ -3,6 +3,7 @@ import type {
   AppEvent,
   CandidateChannel,
   ClientInfo,
+  DecodeFrame,
   DeviceInfo,
   Metrics,
   ScanConfig,
@@ -73,6 +74,11 @@ export interface AppState {
   // the store never accumulates an unbounded array here.
   scope: ScopeFrame | null;
   pushScopeFrame: (frame: ScopeFrame) => void;
+
+  // decoder output (bounded, newest first)
+  decodes: DecodeFrame[];
+  pushDecode: (decode: DecodeFrame) => void;
+  setDecodes: (decodes: DecodeFrame[]) => void;
 
   // presence
   clients: ClientInfo[];
@@ -145,6 +151,14 @@ export const useStore = create<AppState>((set, get) => ({
 
   scope: null,
   pushScopeFrame: (frame) => set({ scope: frame }),
+
+  decodes: [],
+  pushDecode: (decode) => {
+    const next = [decode, ...get().decodes];
+    if (next.length > 300) next.length = 300;
+    set({ decodes: next });
+  },
+  setDecodes: (decodes) => set({ decodes: decodes.slice(0, 300) }),
 
   clients: [],
   presenceCount: 0,

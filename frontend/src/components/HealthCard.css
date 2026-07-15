@@ -1,0 +1,8 @@
+.health-card .health-spark {
+  margin: 8px 0 4px;
+  height: 34px;
+}
+
+.health-card .tile .value {
+  font-variant-numeric: tabular-nums;
+}

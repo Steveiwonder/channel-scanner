@@ -115,6 +115,22 @@ _MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        2,
+        """
+        CREATE TABLE IF NOT EXISTS decodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            decoder TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            freq_hz INTEGER,
+            known INTEGER NOT NULL DEFAULT 1,
+            fields_json TEXT NOT NULL,
+            session_id INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_decodes_ts ON decodes(timestamp);
+        """,
+    ),
 ]
 
 

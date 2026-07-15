@@ -7,6 +7,9 @@ import { BandMap } from '../components/BandMap';
 import { CadenceBar } from '../components/CadenceBar';
 import { ChannelDetail } from '../components/ChannelDetail';
 import { InfoTip } from '../components/InfoTip';
+import { PatternBadge } from '../components/PatternBadge';
+import { CompareChannels } from '../components/CompareChannels';
+import { usePinnedChannels } from '../components/usePinnedChannels';
 import { api, ApiError } from '../lib/api';
 import type { CandidateChannel, Detection } from '../lib/types';
 import {
@@ -67,6 +70,11 @@ export function Channels(): JSX.Element {
   // frozen we display a snapshot taken at freeze time instead of the live map.
   const [frozen, setFrozen] = useState(false);
   const frozenSnapshot = useRef<CandidateChannel[]>([]);
+  // Pin / watch + annotate (persisted in localStorage, no backend).
+  const { pins, isPinned, getLabel, togglePin, setLabel } = usePinnedChannels();
+  // Burst A/B compare: ids selected for comparison (max 2) + open state.
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [comparing, setComparing] = useState(false);
 
   const source = frozen ? frozenSnapshot.current : Array.from(channelMap.values());
   const totalCount = source.length;
@@ -113,9 +121,34 @@ export function Channels(): JSX.Element {
     return arr;
   }, [source, filters, sortKey, asc]);
 
+  // Pinned rows always float to the TOP, but each group (pinned / unpinned) still
+  // honours the active column sort computed above.
+  const orderedChannels = useMemo(() => {
+    const pinnedRows: CandidateChannel[] = [];
+    const rest: CandidateChannel[] = [];
+    for (const c of channels) {
+      if (pins[c.id]?.pinned === true) pinnedRows.push(c);
+      else rest.push(c);
+    }
+    return [...pinnedRows, ...rest];
+  }, [channels, pins]);
+
   function setFilter<K extends keyof ChannelFilters>(key: K, value: ChannelFilters[K]): void {
     setFilters((f) => ({ ...f, [key]: value }));
   }
+
+  function toggleCompare(id: number): void {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 2) return prev;
+      return [...prev, id];
+    });
+  }
+
+  const compareChannels = compareIds
+    .map((id) => source.find((c) => c.id === id))
+    .filter((c): c is CandidateChannel => c != null);
+  const canCompare = compareChannels.length === 2;
 
   // Normalize avg power to 0..1 across the current channels so similar values
   // read as similar-length bars — a block of similar channels stands out,
@@ -157,6 +190,17 @@ export function Channels(): JSX.Element {
         <h1>Candidate channels</h1>
         <div className="row">
           <NoiseFloorIndicator />
+          <button
+            disabled={!canCompare}
+            onClick={() => setComparing(true)}
+            title={
+              canCompare
+                ? 'Compare the two selected channels side by side'
+                : 'Select exactly two channels (checkboxes) to compare'
+            }
+          >
+            Compare selected ({compareChannels.length}/2)
+          </button>
           <button
             className={frozen ? 'danger' : ''}
             onClick={toggleFreeze}
@@ -278,6 +322,12 @@ export function Channels(): JSX.Element {
           <table>
             <thead>
               <tr>
+                <th style={{ textAlign: 'center' }}>
+                  Pin
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <InfoTip text="Pin/watch a channel (★) to keep it at the top of the table and add a note. Use the checkbox to select up to two channels, then Compare selected. Pins and notes are saved in this browser only." />
+                  </span>
+                </th>
                 <th className="num sortable" onClick={() => toggleSort('id')}>
                   ID{sortArrow('id')}
                 </th>
@@ -326,6 +376,12 @@ export function Channels(): JSX.Element {
                     <InfoTip text="Confidence (0–1) that this is a real, recurring channel — combines recurrence regularity, SNR, stability and how many times it has been observed. Not a claim about which device it is." />
                   </span>
                 </th>
+                <th>
+                  Pattern
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <InfoTip text="Heuristic indicator of a periodic-narrowband transmission pattern, not a claim that it is a meter or any specific device." />
+                  </span>
+                </th>
                 <th className="sortable" onClick={() => toggleSort('status')}>
                   Status{sortArrow('status')}
                 </th>
@@ -333,9 +389,69 @@ export function Channels(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {channels.map((ch) => (
-                <tr key={ch.id}>
-                  <td className="num mono">{ch.id}</td>
+              {orderedChannels.map((ch) => {
+                const pinned = isPinned(ch.id);
+                const selected = compareIds.includes(ch.id);
+                const label = getLabel(ch.id);
+                return (
+                <tr
+                  key={ch.id}
+                  style={
+                    pinned
+                      ? { background: 'rgba(56, 189, 248, 0.08)', boxShadow: 'inset 3px 0 0 var(--accent)' }
+                      : undefined
+                  }
+                >
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                      <button
+                        onClick={() => togglePin(ch.id)}
+                        aria-pressed={pinned}
+                        title={pinned ? 'Unpin (stop watching)' : 'Pin / watch this channel'}
+                        style={{
+                          padding: '0 4px',
+                          fontSize: '1rem',
+                          lineHeight: 1,
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: pinned ? 'var(--accent)' : 'var(--text-faint)',
+                        }}
+                      >
+                        {pinned ? '★' : '☆'}
+                      </button>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={!selected && compareIds.length >= 2}
+                        onChange={() => toggleCompare(ch.id)}
+                        aria-label={`Select channel ${ch.id} to compare`}
+                        title="Select to compare (max 2)"
+                      />
+                    </div>
+                  </td>
+                  <td className="num mono">
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                      <span>{ch.id}</span>
+                      <input
+                        value={label}
+                        onChange={(e) => setLabel(ch.id, e.target.value)}
+                        placeholder="label…"
+                        aria-label={`Label for channel ${ch.id}`}
+                        title="Add a note/label for this channel (saved in this browser)"
+                        style={{
+                          width: 84,
+                          padding: '1px 4px',
+                          fontSize: '0.72rem',
+                          textAlign: 'right',
+                          background: 'var(--bg-elev)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          color: 'var(--text)',
+                        }}
+                      />
+                    </div>
+                  </td>
                   <td className="num mono">{hzToMHz(ch.center_hz).toFixed(4)}</td>
                   <td className="num">{hzSpanToHuman(ch.bandwidth_hz)}</td>
                   <td className="num">{formatDb(ch.current_power_db)}</td>
@@ -380,6 +496,9 @@ export function Channels(): JSX.Element {
                     </div>
                   </td>
                   <td>
+                    <PatternBadge channel={ch} />
+                  </td>
+                  <td>
                     <StatusBadge status={ch.status} />
                   </td>
                   <td>
@@ -398,12 +517,20 @@ export function Channels(): JSX.Element {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
+      {comparing && canCompare && compareChannels[0] && compareChannels[1] && (
+        <CompareChannels
+          a={compareChannels[0]}
+          b={compareChannels[1]}
+          onClose={() => setComparing(false)}
+        />
+      )}
       {obsFor && <ObservationsModal channel={obsFor} onClose={() => setObsFor(null)} />}
       {detailFor && (
         <ChannelDetail

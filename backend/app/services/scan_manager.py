@@ -37,6 +37,7 @@ from ..storage.repositories import Repositories
 from ..utils import iso_now, utcnow
 from ..websocket.manager import ConnectionManager
 from .control_lease import ControlLease
+from .decoder import DecodedMessage, ReceiveOnlyDecoder
 from .recorder import Recorder
 from .retention import RetentionService
 
@@ -83,6 +84,9 @@ class ScanManager:
         # coupling; update_config() propagates runtime settings to them.
         self._recorder: Recorder | None = None
         self._retention: RetentionService | None = None
+        self._decoder: ReceiveOnlyDecoder | None = None
+        self._last_decode_emit = 0.0
+        self._decode_counter = 0
 
         self._scanning = False
         self._task: asyncio.Task | None = None
@@ -145,10 +149,16 @@ class ScanManager:
             retention_days=s.retention_days,
         )
 
-    def attach_services(self, recorder: Recorder, retention: RetentionService) -> None:
-        """Wire in services that receive runtime config updates."""
+    def attach_services(
+        self,
+        recorder: Recorder,
+        retention: RetentionService,
+        decoder: ReceiveOnlyDecoder | None = None,
+    ) -> None:
+        """Wire in services that receive runtime config updates / decoder runs."""
         self._recorder = recorder
         self._retention = retention
+        self._decoder = decoder
 
     async def _reconfigure_backend(self) -> None:
         """Re-open the SDR backend after a receiver/device/sim change.
@@ -447,6 +457,9 @@ class ScanManager:
                 if self._mode == "focus":
                     self._maybe_emit_scope(freqs, power_db, envelope_db, floor, center, span)
 
+                # Simulated decoder output (real rtl_433 runs via run_decoder()).
+                await self._maybe_emit_decode()
+
                 # Advance sweep position.
                 if self._mode == "sweep":
                     self._advance_sweep(span)
@@ -699,6 +712,90 @@ class ScanManager:
         self.metrics.scan_progress = round(min(1.0, max(0.0, pos / span_total)), 4)
         # Keep the dashboard (device, live metrics, scanning state) fresh ~1/s.
         await self._broadcast_status()
+
+    # ------------------------------------------------------------- decoder
+    def _make_sim_decode(self) -> schemas.DecodeFrame:
+        """Synthesize a plausible decoded meter reading (simulation only)."""
+        self._decode_counter += 1
+        n = self._decode_counter
+        freq = 867_500_000 if n % 2 == 0 else 869_250_000
+        return schemas.DecodeFrame(
+            timestamp=iso_now(),
+            decoder="sim",
+            protocol="SimMeter",
+            freq_hz=freq,
+            known=True,
+            fields={
+                "model": "SimMeter",
+                "id": 100000 + (freq % 1000),
+                "reading_kwh": round(1000.0 + n * 0.37, 2),
+                "battery_ok": True,
+                "note": "simulated decode — no real device",
+            },
+            session_id=self._session_id,
+        )
+
+    async def _store_and_broadcast_decode(self, frame: schemas.DecodeFrame) -> None:
+        frame.id = await self._repos.decodes.create(frame)
+        self._ws.broadcast_decode(frame.model_dump(mode="json"))
+
+    async def _maybe_emit_decode(self) -> None:
+        if not self._settings.effective_simulation():
+            return
+        now = time.monotonic()
+        if now - self._last_decode_emit < 7.0:
+            return
+        self._last_decode_emit = now
+        await self._store_and_broadcast_decode(self._make_sim_decode())
+
+    async def run_decoder(
+        self, seconds: float = 6.0
+    ) -> tuple[bool, str, list[schemas.DecodeFrame]]:
+        """One-shot decode run. Uses rtl_433 when available (it needs exclusive
+        device access, so the scan is paused around it); otherwise synthesizes a
+        few simulated decodes so the panel is usable without hardware."""
+        frames: list[schemas.DecodeFrame] = []
+        real = self._decoder is not None and self._decoder.available()
+        if not real:
+            for _ in range(3):
+                frame = self._make_sim_decode()
+                await self._store_and_broadcast_decode(frame)
+                frames.append(frame)
+            msg = (
+                "rtl_433 not available — generated simulated decodes"
+                if self._settings.effective_simulation()
+                else "rtl_433 binary not found; install it to decode real signals"
+            )
+            return (False, msg, frames)
+
+        assert self._decoder is not None
+        was_scanning = self._scanning
+        center = self._focus_center or ((self._config.start_hz + self._config.end_hz) // 2)
+        if was_scanning:
+            await self.stop_scan()
+        try:
+            await self._decoder.start(center_hz=center, sample_rate=self._config.sample_rate)
+            await asyncio.sleep(seconds)
+            for m in self._decoder.drain():
+                frame = self._decode_to_frame(m)
+                await self._store_and_broadcast_decode(frame)
+                frames.append(frame)
+        finally:
+            await self._decoder.stop()
+            if was_scanning:
+                await self.start_scan()
+        return (True, f"rtl_433 ran for {int(seconds)}s; {len(frames)} message(s)", frames)
+
+    def _decode_to_frame(self, m: DecodedMessage) -> schemas.DecodeFrame:
+        return schemas.DecodeFrame(
+            timestamp=m.timestamp,
+            decoder=m.decoder,
+            protocol=m.protocol,
+            freq_hz=m.freq_hz,
+            known=m.known,
+            fields=m.fields,
+            session_id=self._session_id,
+        )
 
     async def _broadcast_status(self) -> None:
         """Broadcast device + live metrics + scanning state + mode to all clients."""

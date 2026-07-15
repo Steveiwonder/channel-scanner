@@ -231,6 +231,17 @@ class DetectionRepository:
         await cur.close()
         return [self._to_model(r) for r in rows]
 
+    async def centers_since(self, since_iso: str) -> list[tuple[str, int]]:
+        """(timestamp, center_hz) for detections at/after `since_iso` — for the
+        occupancy heatmap."""
+        cur = await self._db.connection.execute(
+            "SELECT timestamp, center_hz FROM detections WHERE timestamp >= ? ORDER BY timestamp",
+            (since_iso,),
+        )
+        rows = await cur.fetchall()
+        await cur.close()
+        return [(r["timestamp"], int(r["center_hz"])) for r in rows]
+
     @staticmethod
     def _to_model(r: aiosqlite.Row) -> schemas.Detection:
         return schemas.Detection(
@@ -450,6 +461,49 @@ class RecordingRepository:
         )
 
 
+class DecodeRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def create(self, d: schemas.DecodeFrame) -> int:
+        async with self._db.write_lock:
+            cur = await self._db.connection.execute(
+                "INSERT INTO decodes (timestamp, decoder, protocol, freq_hz, known, fields_json, "
+                "session_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    d.timestamp,
+                    d.decoder,
+                    d.protocol,
+                    d.freq_hz,
+                    1 if d.known else 0,
+                    json.dumps(d.fields),
+                    d.session_id,
+                ),
+            )
+            await self._db.connection.commit()
+            return int(cur.lastrowid or 0)
+
+    async def list(self, limit: int = 200) -> list[schemas.DecodeFrame]:
+        cur = await self._db.connection.execute(
+            "SELECT * FROM decodes ORDER BY id DESC LIMIT ?", (limit,)
+        )
+        rows = await cur.fetchall()
+        await cur.close()
+        return [
+            schemas.DecodeFrame(
+                id=r["id"],
+                timestamp=r["timestamp"],
+                decoder=r["decoder"],
+                protocol=r["protocol"],
+                freq_hz=r["freq_hz"],
+                known=bool(r["known"]),
+                fields=json.loads(r["fields_json"]),
+                session_id=r["session_id"],
+            )
+            for r in rows
+        ]
+
+
 class Repositories:
     """Aggregate handle to all repositories."""
 
@@ -463,6 +517,7 @@ class Repositories:
         self.config_changes = ConfigChangeRepository(db)
         self.receiver_config = ReceiverConfigRepository(db)
         self.recordings = RecordingRepository(db)
+        self.decodes = DecodeRepository(db)
 
     async def clear_all_data(self) -> None:
         """Delete all observation/event/recording rows.
@@ -477,6 +532,7 @@ class Repositories:
             "client_events",
             "config_changes",
             "recordings",
+            "decodes",
             "candidate_channels",
             "sessions",
         )

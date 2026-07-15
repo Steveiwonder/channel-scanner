@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from ..context import AppContext
 from ..models import schemas
@@ -42,9 +44,10 @@ async def start_recording(
                 sample_rate=cfg.sample_rate,
                 gain=cfg.gain,
                 reason="manual",
+                fmt=body.format,
             ),
         )
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     rec = schemas.Recording(
@@ -82,6 +85,23 @@ async def stop_recording(ctx: AppContext = Depends(get_context)) -> schemas.OkRe
 async def list_recordings(ctx: AppContext = Depends(get_context)) -> schemas.RecordingsResponse:
     recs = await ctx.repos.recordings.list()
     return schemas.RecordingsResponse(recordings=recs)
+
+
+@router.get("/{recording_id}/download")
+async def download_recording(
+    recording_id: int, meta: bool = False, ctx: AppContext = Depends(get_context)
+) -> FileResponse:
+    """Download a recording's raw IQ (.sigmf-data) or, with ?meta=true, its
+    .sigmf-meta JSON sidecar."""
+    rec = await ctx.repos.recordings.get(recording_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+    path = Path(rec.path)
+    if meta:
+        path = path.with_suffix(".sigmf-meta")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="recording file missing on disk")
+    return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
 
 @router.delete("/{recording_id}", response_model=schemas.OkResponse)

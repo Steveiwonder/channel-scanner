@@ -1,0 +1,34 @@
+.patternbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.patternbadge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.patternbadge--strong {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.patternbadge--moderate {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.patternbadge--weak {
+  color: var(--text-faint);
+}

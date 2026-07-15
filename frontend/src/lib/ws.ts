@@ -164,6 +164,9 @@ function dispatch(msg: ServerMessage): void {
     case 'control':
       store.setLease(msg.operator_client_id, msg.lease_expires);
       break;
+    case 'decode':
+      store.pushDecode(msg.decode);
+      break;
     default: {
       // Exhaustiveness guard: unknown message types are ignored.
       const _never: never = msg;

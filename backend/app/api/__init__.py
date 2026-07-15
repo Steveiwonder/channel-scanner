@@ -10,11 +10,13 @@ from . import (
     config,
     control,
     data,
+    decoder,
     device,
     events,
     export,
     health,
     metrics,
+    occupancy,
     recordings,
     scan,
     sessions,
@@ -34,5 +36,7 @@ api_router.include_router(recordings.router)
 api_router.include_router(clients.router)
 api_router.include_router(control.router)
 api_router.include_router(data.router)
+api_router.include_router(decoder.router)
+api_router.include_router(occupancy.router)
 
 __all__ = ["api_router"]
