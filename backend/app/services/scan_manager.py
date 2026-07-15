@@ -31,6 +31,11 @@ from ..signal_processing import psd as psd_mod
 from ..signal_processing.clustering import ChannelClusterer
 from ..signal_processing.detector import detect_regions
 from ..signal_processing.fingerprint import build_fingerprint
+from ..signal_processing.modulation import (
+    ModulationEstimate,
+    estimate_modulation,
+    isolate_and_decimate,
+)
 from ..signal_processing.noise_floor import NoiseFloorEstimator
 from ..signal_processing.recurrence import RecurrenceTracker
 from ..storage.repositories import Repositories
@@ -87,6 +92,10 @@ class ScanManager:
         self._decoder: ReceiveOnlyDecoder | None = None
         self._last_decode_emit = 0.0
         self._decode_counter = 0
+        self._last_mod_calc = 0.0
+        # Sticky last confident modulation hint (bursty signals classify only when
+        # a burst is caught; keep the last known so the UI doesn't flap to unknown).
+        self._last_modulation: ModulationEstimate | None = None
 
         self._scanning = False
         self._task: asyncio.Task | None = None
@@ -209,7 +218,11 @@ class ScanManager:
         widths = self._config.known_channel_widths_hz
         if widths:
             return max(5_000, int(min(widths) / 2))
-        return 25_000
+        # A single wide/structured signal is often detected as several regions a
+        # few tens of kHz apart; 40 kHz collapses those into one channel while
+        # keeping genuinely distinct 868-band emitters (typically >100 kHz apart)
+        # separate. Override with known_channel_widths_hz for tighter grids.
+        return 40_000
 
     @property
     def config(self) -> schemas.ScanConfig:
@@ -332,6 +345,7 @@ class ScanManager:
         self._mode = "focus"
         self._focus_center = int(center_hz)
         self._focus_span = int(span_hz) if span_hz else self._config.sample_rate
+        self._last_modulation = None  # clear stale hint for the previous centre
         await self._emit_event(
             "focus",
             f"center={center_hz} span={self._focus_span}",
@@ -448,14 +462,18 @@ class ScanManager:
                     await asyncio.sleep(0.05)
                     continue
 
-                freqs, power_db, envelope_db = result
+                freqs, power_db, envelope_db, modulation = result
                 self.metrics.record_fft()
 
                 floor = self._noise.update(power_db)
                 await self._process_frame(freqs, power_db, floor, center, span)
                 # Live scope: fine spectrogram + envelope of the focused window.
                 if self._mode == "focus":
-                    self._maybe_emit_scope(freqs, power_db, envelope_db, floor, center, span)
+                    if modulation is not None and modulation["modulation"] != "unknown":
+                        self._last_modulation = modulation
+                    self._maybe_emit_scope(
+                        freqs, power_db, envelope_db, floor, center, span, self._last_modulation
+                    )
 
                 # Simulated decoder output (real rtl_433 runs via run_decoder()).
                 await self._maybe_emit_decode()
@@ -479,11 +497,16 @@ class ScanManager:
         finally:
             log.info("scan.loop_exit")
 
-    def _read_and_psd(self, center: int, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Blocking: runs in executor thread. Returns (freqs_hz, power_db, envelope_db).
+    def _read_and_psd(
+        self, center: int, n: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, ModulationEstimate | None]:
+        """Blocking: runs in executor thread. Returns
+        (freqs_hz, power_db, envelope_db, modulation).
 
         envelope_db is the decimated |IQ| magnitude over the dwell, in dB, used for
-        the time-domain amplitude strip in the live scope.
+        the time-domain amplitude strip in the live scope. modulation is a coarse
+        OOK/FSK + symbol-rate hint computed from the raw IQ (focus mode only; None
+        otherwise) so raw IQ never has to leave the backend.
         """
         assert self._backend is not None
         self._backend.set_center_freq(center)
@@ -503,7 +526,18 @@ class ScanManager:
         else:
             env = mag
         env_db = 20.0 * np.log10(env + 1e-12)
-        return result.freqs_hz, result.power_db, env_db
+        # Modulation hint: isolate the parked channel (band-limit around DC +
+        # decimate) so we don't classify the whole wideband window, and throttle
+        # to ~1/s since it needs an extra FFT. Estimated on a bounded slice.
+        modulation: ModulationEstimate | None = None
+        if self._mode == "focus":
+            now_m = time.monotonic()
+            if now_m - self._last_mod_calc >= 1.0:
+                self._last_mod_calc = now_m
+                seg = iq[:131072]
+                iso, rate2 = isolate_and_decimate(seg, int(self._config.sample_rate), 60_000.0)
+                modulation = estimate_modulation(iso, int(rate2))
+        return result.freqs_hz, result.power_db, env_db, modulation
 
     async def _process_frame(
         self,
@@ -668,6 +702,7 @@ class ScanManager:
         floor: float,
         center: int,
         span: int,
+        modulation: ModulationEstimate | None = None,
     ) -> None:
         """Emit one fine-resolution spectrogram row + amplitude envelope for the
         focused window (the live, triq-style scope). Throttled to scope_fps."""
@@ -694,6 +729,7 @@ class ScanManager:
             "env_dt_us": env_dt_us,
             "seq": self._scope_seq,
             "t_ms": round(now * 1000.0, 1),
+            "modulation": modulation,
         }
         self._ws.broadcast_scope(payload)
 
@@ -702,7 +738,13 @@ class ScanManager:
         if now - self._last_snapshot_emit < 1.0:
             return
         self._last_snapshot_emit = now
-        self._clusterer.merge_overlapping()
+        # Merge near-duplicate channels (drift), then delete the merged-away rows
+        # so /api/channels doesn't keep orphaned duplicates.
+        for rid in self._clusterer.merge_overlapping():
+            db_id = self._channel_db_id.pop(rid, rid)
+            self._recurrence.pop(rid, None)
+            self._last_persist.pop(rid, None)
+            await self._repos.channels.delete(db_id)
         channels = await self._repos.channels.list()
         self._ws.broadcast_channels([c.model_dump(mode="json") for c in channels])
         # Update scan progress metric: how far the current window centre sits
@@ -796,6 +838,59 @@ class ScanManager:
             fields=m.fields,
             session_id=self._session_id,
         )
+
+    async def calibrate(self, reference_hz: int, search_hz: int = 50_000) -> dict:
+        """Measure the strongest peak near a known reference frequency and derive
+        the tuner's ppm error. Pauses the scan for a single dwell read, then
+        resumes. Returns a suggestion; applying it is left to the user (PUT config).
+        """
+        if self._backend is None:
+            await self.startup()
+        was_scanning = self._scanning
+        was_focus = self._mode == "focus"
+        focus_center = self._focus_center
+        if was_scanning:
+            await self.stop_scan()
+        try:
+            loop = asyncio.get_running_loop()
+            freqs, power_db, _env, _mod = await loop.run_in_executor(
+                None, self._read_and_psd, int(reference_hz), self._dwell_samples()
+            )
+        finally:
+            if was_scanning:
+                await self.start_scan()
+                if was_focus and focus_center is not None:
+                    await self.focus(focus_center, None, None)
+
+        median = float(np.median(power_db))
+        mask = np.abs(freqs - float(reference_hz)) <= float(search_hz)
+        idxs = np.flatnonzero(mask)
+        if idxs.size == 0:
+            return {"ok": False, "message": "reference frequency is outside the tunable window"}
+        sub = power_db[idxs]
+        peak_local = int(idxs[int(np.argmax(sub))])
+        peak_snr = round(float(power_db[peak_local]) - median, 1)
+        if peak_snr < 6.0:
+            return {
+                "ok": False,
+                "message": f"no strong signal near {reference_hz / 1e6:.4f} MHz "
+                f"(peak only {peak_snr:.1f} dB over noise) — use a known steady carrier",
+            }
+        measured_hz = int(round(float(freqs[peak_local])))
+        offset_hz = measured_hz - int(reference_hz)
+        ppm_error = round(offset_hz / reference_hz * 1e6, 2)
+        current_ppm = int(self._config.ppm)
+        return {
+            "ok": True,
+            "message": f"measured {measured_hz / 1e6:.5f} MHz (off by {offset_hz} Hz)",
+            "reference_hz": int(reference_hz),
+            "measured_hz": measured_hz,
+            "offset_hz": offset_hz,
+            "ppm_error": ppm_error,
+            "current_ppm": current_ppm,
+            "suggested_ppm": int(round(current_ppm - ppm_error)),
+            "peak_snr_db": peak_snr,
+        }
 
     async def _broadcast_status(self) -> None:
         """Broadcast device + live metrics + scanning state + mode to all clients."""

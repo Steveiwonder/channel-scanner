@@ -52,5 +52,18 @@ def test_merge_overlapping_collapses_drifted_channels() -> None:
     b = c.ingest(_region(868_020_000), "t1")
     assert a.id != b.id
     b.center_hz = 868_003_000  # simulate drift within proximity
-    c.merge_overlapping()
+    removed = c.merge_overlapping()
     assert len(c.channels) == 1
+    assert removed == [b.id]  # returns the merged-away id so its DB row is deleted
+
+
+def test_merge_uses_bandwidth_overlap() -> None:
+    # Two wide regions whose centres are farther apart than proximity_hz but whose
+    # occupied bands overlap should still merge (drift/wide-signal aware).
+    c = ChannelClusterer(proximity_hz=5_000)
+    a = c.ingest(_region(868_000_000, bw=60_000), "t0")
+    b = c.ingest(_region(868_040_000, bw=60_000), "t1")
+    assert a.id != b.id  # 40 kHz apart > 5 kHz proximity
+    removed = c.merge_overlapping()  # half-sum of bandwidths (60 kHz) bridges them
+    assert len(c.channels) == 1
+    assert removed == [b.id]

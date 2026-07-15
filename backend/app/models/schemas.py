@@ -268,6 +268,23 @@ class ClientActionBody(BaseModel):
     client_id: str
 
 
+class CalibrateBody(BaseModel):
+    reference_hz: int
+    search_hz: int = 50_000
+
+
+class CalibrateResponse(BaseModel):
+    ok: bool
+    message: str
+    reference_hz: int | None = None
+    measured_hz: int | None = None
+    offset_hz: int | None = None
+    ppm_error: float | None = None
+    current_ppm: int | None = None
+    suggested_ppm: int | None = None
+    peak_snr_db: float | None = None
+
+
 class DecodeFrame(BaseModel):
     """A receive-only decoder result (e.g. from rtl_433 or the simulator).
 

@@ -117,8 +117,16 @@ class ChannelClusterer:
         ch.last_seen_ts = timestamp
         return ch
 
-    def merge_overlapping(self) -> None:
-        """Merge channels whose centers drifted within proximity of each other."""
+    def merge_overlapping(self) -> list[int]:
+        """Merge channels whose occupied bands overlap (drift-aware).
+
+        Two candidates merge when their centre separation is within the larger of
+        `proximity_hz` and half the sum of their bandwidths (i.e. their occupied
+        regions substantially overlap) -- so one drifting physical signal stays a
+        single channel. Returns the ids of the channels that were merged away
+        (removed) so the caller can delete their persisted rows.
+        """
+        removed: list[int] = []
         ids = sorted(self._channels.keys())
         for i in ids:
             a = self._channels.get(i)
@@ -130,7 +138,8 @@ class ChannelClusterer:
                 b = self._channels.get(j)
                 if b is None:
                     continue
-                if abs(a.center_hz - b.center_hz) <= self.proximity_hz:
+                threshold = max(self.proximity_hz, (a.bandwidth_hz + b.bandwidth_hz) // 2)
+                if abs(a.center_hz - b.center_hz) <= threshold:
                     # Merge b into a (keep lower id for stability).
                     total = a.observation_count + b.observation_count or 1
                     a.center_hz = int(
@@ -153,3 +162,5 @@ class ChannelClusterer:
                     ):
                         a.last_seen_ts = b.last_seen_ts
                     del self._channels[j]
+                    removed.append(j)
+        return removed

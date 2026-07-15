@@ -148,6 +148,14 @@ class ChannelRepository:
         await cur.close()
         return row is not None
 
+    async def delete(self, channel_id: int) -> None:
+        """Remove a candidate channel (e.g. after it was merged into another)."""
+        async with self._db.write_lock:
+            await self._db.connection.execute(
+                "DELETE FROM candidate_channels WHERE id=?", (channel_id,)
+            )
+            await self._db.connection.commit()
+
     async def list(self, limit: int = 500) -> list[schemas.CandidateChannel]:
         cur = await self._db.connection.execute(
             "SELECT * FROM candidate_channels ORDER BY center_hz ASC LIMIT ?", (limit,)

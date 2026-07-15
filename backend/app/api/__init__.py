@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import (
+    calibrate,
     channels,
     clients,
     config,
@@ -38,5 +39,6 @@ api_router.include_router(control.router)
 api_router.include_router(data.router)
 api_router.include_router(decoder.router)
 api_router.include_router(occupancy.router)
+api_router.include_router(calibrate.router)
 
 __all__ = ["api_router"]
