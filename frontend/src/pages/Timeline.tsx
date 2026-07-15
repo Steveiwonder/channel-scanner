@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store/store';
 import { api } from '../lib/api';
 import type { CandidateChannel, Detection } from '../lib/types';
@@ -20,36 +20,36 @@ interface Burst {
 }
 
 export function Timeline(): JSX.Element {
-  const channelMap = useStore((s) => s.channels);
   const events = useStore((s) => s.events);
   const [windowMs, setWindowMs] = useState<number>(WINDOW_OPTIONS[1]!.ms);
+  const [channels, setChannels] = useState<CandidateChannel[]>([]);
   const [burstsByChannel, setBurstsByChannel] = useState<Map<number, Burst[]>>(new Map());
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Channels most recently active first.
-  const channels = useMemo(() => {
-    const arr = Array.from(channelMap.values());
-    arr.sort((a, b) => b.last_seen.localeCompare(a.last_seen));
-    return arr.slice(0, MAX_CHANNELS);
-  }, [channelMap]);
-
   const now = Date.now();
   const windowStart = now - windowMs;
 
+  // Reload observations on a timer (and on window/refresh changes) rather than
+  // on every live channel update. Subscribing to the per-second channel stream
+  // here caused a reload + full re-render each second, which reset the page
+  // scroll and hammered the API. A 5 s poll keeps the view fresh without churn.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    void (async () => {
+    const load = async (): Promise<void> => {
+      const chs = Array.from(useStore.getState().channels.values())
+        .sort((a, b) => b.last_seen.localeCompare(a.last_seen))
+        .slice(0, MAX_CHANNELS);
+      const start = Date.now() - windowMs;
       const map = new Map<number, Burst[]>();
       await Promise.all(
-        channels.map(async (ch) => {
+        chs.map(async (ch) => {
           try {
             const res = await api.getChannelObservations(ch.id, 300);
             const bursts: Burst[] = [];
             for (const d of res.observations) {
               const t = new Date(d.timestamp).getTime();
-              if (Number.isNaN(t) || t < windowStart) continue;
+              if (Number.isNaN(t) || t < start) continue;
               bursts.push({ detection: d, startMs: t, durationMs: d.duration_ms ?? 50 });
             }
             map.set(ch.id, bursts);
@@ -59,16 +59,19 @@ export function Timeline(): JSX.Element {
         }),
       );
       if (!cancelled) {
+        setChannels(chs);
         setBurstsByChannel(map);
         setLoading(false);
       }
-    })();
+    };
+    setLoading(true);
+    void load();
+    const timer = setInterval(() => void load(), 5000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
-    // channels identity changes when the map updates; refreshKey forces manual reloads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [windowMs, refreshKey, channelMap]);
+  }, [windowMs, refreshKey]);
 
   return (
     <div>

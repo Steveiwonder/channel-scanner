@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     fft_size: int = 2048
     spectrum_fps: int = 10
     spectrum_bins: int = 1024
+    # Live "scope" (triq-style) fine spectrogram of a focused window.
+    scope_fps: int = 20
+    scope_bins: int = 512
+    scope_envelope_points: int = 256
     cors_origins: str = "*"
 
     # --- Derived / internal (not from env) ---

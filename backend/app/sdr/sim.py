@@ -37,6 +37,13 @@ class SimEmitter:
     phase_s: float = 0.0  # time offset of the cycle
     drift_hz: float = 0.0  # peak slow frequency drift
     label: str = ""
+    # Optional OOK (on-off keying) modulation: when active, the carrier is
+    # gated by a repeating bit pattern clocked at `baud`, producing a visible
+    # pulse train in the time domain (as a real meter would).
+    ook: bool = False
+    baud: float = 1200.0
+    pattern: int = 0b1011010011001011
+    pattern_bits: int = 16
 
     def active(self, t: float) -> bool:
         cycle = (t + self.phase_s) % self.period_s
@@ -47,12 +54,31 @@ class SimEmitter:
             return self.freq_hz
         return self.freq_hz + self.drift_hz * np.sin(2.0 * np.pi * t / 37.0)
 
+    def ook_gate(self, t: np.ndarray) -> np.ndarray:
+        """Per-sample 0/1 OOK gate from a repeating bit pattern clocked at baud."""
+        nbits = max(1, self.pattern_bits)
+        bit_idx = np.floor(t * self.baud).astype(np.int64) % nbits
+        bits = (self.pattern >> (nbits - 1 - bit_idx)) & 1
+        return bits.astype(np.float64)
+
 
 # Default synthetic scene inside the 867-870 MHz ISM-ish band.
 _DEFAULT_EMITTERS: list[SimEmitter] = [
-    # Repeating meter-like short burst every ~4 s (the "meter" pattern).
-    SimEmitter(867_500_000, 30_000, 22.0, period_s=4.0, duty=0.06, drift_hz=800.0, label="meter-a"),
-    # A second meter on a different cadence.
+    # Repeating meter-like short burst every ~4 s (the "meter" pattern),
+    # OOK-modulated so it shows a distinct pulse train in the scope view.
+    SimEmitter(
+        867_500_000,
+        30_000,
+        22.0,
+        period_s=4.0,
+        duty=0.06,
+        drift_hz=800.0,
+        label="meter-a",
+        ook=True,
+        baud=1200.0,
+        pattern=0b1011010011001011,
+    ),
+    # A second meter on a different cadence and pulse rate.
     SimEmitter(
         869_250_000,
         25_000,
@@ -62,6 +88,9 @@ _DEFAULT_EMITTERS: list[SimEmitter] = [
         phase_s=1.3,
         drift_hz=500.0,
         label="meter-b",
+        ook=True,
+        baud=2000.0,
+        pattern=0b1101001010110010,
     ),
     # Chatty intermittent narrowband sensor.
     SimEmitter(868_100_000, 40_000, 15.0, period_s=2.3, duty=0.35, phase_s=0.4, label="sensor-1"),
@@ -186,8 +215,12 @@ class SimulatedSdr(SdrBackend):
             for off, ph in zip(offsets, phases, strict=False):
                 comp += np.exp(1j * (2.0 * np.pi * (f_base + off) * t + ph))
             comp /= n_tones
-            # Gentle amplitude modulation makes an envelope for fingerprinting.
-            env = 0.7 + 0.3 * np.sin(2.0 * np.pi * (t - t0) * 40.0)
+            if em.ook:
+                # OOK: gate the carrier fully on/off per the bit pattern.
+                env = em.ook_gate(t)
+            else:
+                # Gentle amplitude modulation makes an envelope for fingerprinting.
+                env = 0.7 + 0.3 * np.sin(2.0 * np.pi * (t - t0) * 40.0)
             iq += amp * comp * env
 
         # Occasional wideband interference burst (deterministic via time hash).

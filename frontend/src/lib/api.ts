@@ -108,6 +108,20 @@ export const api = {
   startScan: (): Promise<ScanStartResponse> => request('/api/scan/start', { method: 'POST' }),
   stopScan: (): Promise<OkResponse> => request('/api/scan/stop', { method: 'POST' }),
   focusScan: (body: FocusRequest): Promise<OkResponse> => request('/api/scan/focus', jsonBody(body)),
+  /**
+   * Park the tuner on `centerHz` and enter focus (scope) mode. Auto-starts the
+   * scan if idle, so callers do not need to call startScan first.
+   */
+  focus: (centerHz: number, spanHz?: number, channelId?: number): Promise<OkResponse> => {
+    const body: FocusRequest = {
+      center_hz: centerHz,
+      ...(spanHz != null ? { span_hz: spanHz } : {}),
+      ...(channelId != null ? { channel_id: channelId } : {}),
+    };
+    return request('/api/scan/focus', jsonBody(body));
+  },
+  /** Resume normal band sweeping / exit scope mode. */
+  resumeSweep: (): Promise<OkResponse> => request('/api/scan/sweep', { method: 'POST' }),
 
   // --- channels ---
   getChannels: (): Promise<{ channels: CandidateChannel[] }> => request('/api/channels'),

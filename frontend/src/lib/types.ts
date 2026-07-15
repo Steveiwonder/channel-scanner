@@ -4,6 +4,9 @@
 
 export type ChannelStatus = 'active' | 'recently_active' | 'inactive';
 
+/** Receiver operating mode: normal band sweeping vs. parked focus (scope) mode. */
+export type ScanMode = 'sweep' | 'focus';
+
 export type ExportKind = 'channels' | 'detections' | 'events';
 
 /** [low_hz, high_hz] inclusive excluded range. */
@@ -204,6 +207,29 @@ export interface SpectrumFrame {
   scan_pos_hz: number;
 }
 
+/**
+ * Fine-grained scope frame for the parked "focus" window. Arrives on the same
+ * /ws/live socket, only while the receiver is in focus mode, up to ~20/s.
+ * The window edges are center -/+ sample_rate/2.
+ */
+export interface ScopeFrame {
+  type: 'scope';
+  center_hz: number;
+  sample_rate: number;
+  f_start_hz: number;
+  f_stop_hz: number;
+  bin_count: number;
+  /** ONE fine spectrogram row across the window (length === bin_count). */
+  power_db: number[];
+  noise_floor_db: number;
+  /** Decimated |IQ| magnitude in dB over the dwell. */
+  envelope: number[];
+  /** Microseconds per envelope sample. */
+  env_dt_us: number;
+  seq: number;
+  t_ms: number;
+}
+
 export interface WsHello {
   type: 'hello';
   client_id: string;
@@ -232,6 +258,10 @@ export interface WsStatus {
   device: DeviceInfo;
   metrics: Metrics;
   scanning: boolean;
+  /** Current receiver mode. */
+  mode: ScanMode;
+  /** Parked center when in focus mode, else null. */
+  focus_center_hz: number | null;
 }
 
 export interface WsConfig {
@@ -257,6 +287,7 @@ export interface WsControl {
 export type ServerMessage =
   | WsHello
   | SpectrumFrame
+  | ScopeFrame
   | WsChannels
   | WsChannelUpdate
   | WsEvent

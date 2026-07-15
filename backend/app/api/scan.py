@@ -29,3 +29,10 @@ async def focus(
 ) -> schemas.OkResponse:
     await ctx.scan_manager.focus(body.center_hz, body.span_hz, body.channel_id)
     return schemas.OkResponse(ok=True)
+
+
+@router.post("/sweep", response_model=schemas.OkResponse)
+async def sweep(ctx: AppContext = Depends(get_context)) -> schemas.OkResponse:
+    """Exit focus/scope mode and resume sweeping the full band."""
+    await ctx.scan_manager.unfocus()
+    return schemas.OkResponse(ok=True)

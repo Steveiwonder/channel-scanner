@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
@@ -16,16 +17,30 @@ import {
   hzToMHz,
 } from '../lib/format';
 
-type SortKey = 'id' | 'center_hz' | 'snr_db' | 'confidence' | 'last_seen' | 'observation_count';
+type SortKey =
+  | 'id'
+  | 'center_hz'
+  | 'bandwidth_hz'
+  | 'current_power_db'
+  | 'peak_power_db'
+  | 'avg_power_db'
+  | 'snr_db'
+  | 'observation_count'
+  | 'first_seen'
+  | 'last_seen'
+  | 'typical_burst_ms'
+  | 'recurrence_interval_s'
+  | 'confidence'
+  | 'status';
 
 export function Channels(): JSX.Element {
   const channelMap = useStore((s) => s.channels);
   const isOperator = useStore((s) => s.isOperator());
+  const navigate = useNavigate();
 
   const [sortKey, setSortKey] = useState<SortKey>('center_hz');
   const [asc, setAsc] = useState(true);
   const [obsFor, setObsFor] = useState<CandidateChannel | null>(null);
-  const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   const channels = useMemo(() => {
     const arr = Array.from(channelMap.values());
@@ -33,7 +48,11 @@ export function Channels(): JSX.Element {
       const av = a[sortKey];
       const bv = b[sortKey];
       let cmp: number;
-      if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+      // Null/undefined (e.g. burst duration, recurrence not yet known) sort last.
+      if (av == null && bv == null) cmp = 0;
+      else if (av == null) cmp = -1;
+      else if (bv == null) cmp = 1;
+      else if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
       else cmp = String(av).localeCompare(String(bv));
       return asc ? cmp : -cmp;
     });
@@ -48,14 +67,10 @@ export function Channels(): JSX.Element {
     }
   }
 
-  async function focus(ch: CandidateChannel): Promise<void> {
-    setActionMsg(null);
-    try {
-      await api.focusScan({ center_hz: ch.center_hz, span_hz: ch.bandwidth_hz * 4, channel_id: ch.id });
-      setActionMsg(`Focused scan on channel #${ch.id} (${hzToMHz(ch.center_hz).toFixed(4)} MHz).`);
-    } catch (err) {
-      setActionMsg(err instanceof ApiError ? err.message : String(err));
-    }
+  function focus(ch: CandidateChannel): void {
+    // Open the Scope page parked on this channel's center; Scope auto-focuses
+    // via the ?center query param on mount.
+    navigate(`/scope?center=${ch.center_hz}`);
   }
 
   const sortArrow = (key: SortKey): string => (key === sortKey ? (asc ? ' ▲' : ' ▼') : '');
@@ -65,6 +80,7 @@ export function Channels(): JSX.Element {
       <div className="page-header">
         <h1>Candidate channels</h1>
         <div className="row">
+          <NoiseFloorIndicator />
           <a className="badge dim" href={api.exportUrl('csv', 'channels')} download>
             Export CSV
           </a>
@@ -74,7 +90,6 @@ export function Channels(): JSX.Element {
         </div>
       </div>
 
-      {actionMsg && <div className="notice info">{actionMsg}</div>}
       {!isOperator && (
         <div className="notice warn">
           You are not the control operator. Focus will be applied by the backend but may be
@@ -89,32 +104,48 @@ export function Channels(): JSX.Element {
           <table>
             <thead>
               <tr>
-                <th className="num" onClick={() => toggleSort('id')}>
+                <th className="num sortable" onClick={() => toggleSort('id')}>
                   ID{sortArrow('id')}
                 </th>
-                <th className="num" onClick={() => toggleSort('center_hz')}>
+                <th className="num sortable" onClick={() => toggleSort('center_hz')}>
                   Center (MHz){sortArrow('center_hz')}
                 </th>
-                <th className="num">Bandwidth</th>
-                <th className="num">Current</th>
-                <th className="num">Peak</th>
-                <th className="num">Avg</th>
-                <th className="num" onClick={() => toggleSort('snr_db')}>
+                <th className="num sortable" onClick={() => toggleSort('bandwidth_hz')}>
+                  Bandwidth{sortArrow('bandwidth_hz')}
+                </th>
+                <th className="num sortable" onClick={() => toggleSort('current_power_db')}>
+                  Current{sortArrow('current_power_db')}
+                </th>
+                <th className="num sortable" onClick={() => toggleSort('peak_power_db')}>
+                  Peak{sortArrow('peak_power_db')}
+                </th>
+                <th className="num sortable" onClick={() => toggleSort('avg_power_db')}>
+                  Avg{sortArrow('avg_power_db')}
+                </th>
+                <th className="num sortable" onClick={() => toggleSort('snr_db')}>
                   SNR{sortArrow('snr_db')}
                 </th>
-                <th className="num" onClick={() => toggleSort('observation_count')}>
+                <th className="num sortable" onClick={() => toggleSort('observation_count')}>
                   Obs{sortArrow('observation_count')}
                 </th>
-                <th>First seen</th>
-                <th onClick={() => toggleSort('last_seen')}>
+                <th className="sortable" onClick={() => toggleSort('first_seen')}>
+                  First seen{sortArrow('first_seen')}
+                </th>
+                <th className="sortable" onClick={() => toggleSort('last_seen')}>
                   Last seen{sortArrow('last_seen')}
                 </th>
-                <th className="num">Burst</th>
-                <th className="num">Recurrence</th>
-                <th className="num" onClick={() => toggleSort('confidence')}>
+                <th className="num sortable" onClick={() => toggleSort('typical_burst_ms')}>
+                  Burst{sortArrow('typical_burst_ms')}
+                </th>
+                <th className="num sortable" onClick={() => toggleSort('recurrence_interval_s')}>
+                  Recurrence{sortArrow('recurrence_interval_s')}
+                </th>
+                <th className="num sortable" onClick={() => toggleSort('confidence')}>
                   Conf.{sortArrow('confidence')}
                 </th>
-                <th>Status</th>
+                <th className="sortable" onClick={() => toggleSort('status')}>
+                  Status{sortArrow('status')}
+                </th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -139,7 +170,7 @@ export function Channels(): JSX.Element {
                   </td>
                   <td>
                     <div className="row" style={{ flexWrap: 'nowrap' }}>
-                      <button onClick={() => void focus(ch)}>Focus</button>
+                      <button onClick={() => focus(ch)}>Focus</button>
                       <button onClick={() => setObsFor(ch)}>History</button>
                       <a
                         className="badge dim"
@@ -160,6 +191,17 @@ export function Channels(): JSX.Element {
 
       {obsFor && <ObservationsModal channel={obsFor} onClose={() => setObsFor(null)} />}
     </div>
+  );
+}
+
+/** Live noise floor from the latest spectrum frame. Isolated in its own
+ *  component so the (large) channels table does not re-render on every frame. */
+function NoiseFloorIndicator(): JSX.Element {
+  const noiseFloor = useStore((s) => s.spectrum?.noise_floor_db ?? null);
+  return (
+    <span className="badge dim mono" title="Live noise floor (latest spectrum frame)">
+      Noise floor: {noiseFloor == null ? '—' : formatDb(noiseFloor)}
+    </span>
   );
 }
 

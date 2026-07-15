@@ -21,8 +21,10 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-# Message types considered "droppable if stale" (only latest kept).
-_STALE_DROPPABLE = {"spectrum"}
+# Message types considered "droppable if stale" (only latest kept). Both the
+# full-band spectrum and the focused-window scope frames are display-only and
+# coalesced under backpressure so a slow client never grows the buffer.
+_STALE_DROPPABLE = {"spectrum", "scope"}
 
 
 def _utcnow_iso() -> str:
@@ -181,6 +183,9 @@ class ConnectionManager:
     def broadcast_spectrum(self, payload: dict[str, Any]) -> None:
         self._broadcast({"type": "spectrum", **payload})
 
+    def broadcast_scope(self, payload: dict[str, Any]) -> None:
+        self._broadcast({"type": "scope", **payload})
+
     def broadcast_channels(self, channels: list[dict[str, Any]]) -> None:
         self._broadcast({"type": "channels", "channels": channels})
 
@@ -191,10 +196,22 @@ class ConnectionManager:
         self._broadcast({"type": "event", "event": event})
 
     def broadcast_status(
-        self, device: dict[str, Any], metrics: dict[str, Any], scanning: bool
+        self,
+        device: dict[str, Any],
+        metrics: dict[str, Any],
+        scanning: bool,
+        mode: str = "sweep",
+        focus_center_hz: int | None = None,
     ) -> None:
         self._broadcast(
-            {"type": "status", "device": device, "metrics": metrics, "scanning": scanning}
+            {
+                "type": "status",
+                "device": device,
+                "metrics": metrics,
+                "scanning": scanning,
+                "mode": mode,
+                "focus_center_hz": focus_center_hz,
+            }
         )
 
     def broadcast_config(

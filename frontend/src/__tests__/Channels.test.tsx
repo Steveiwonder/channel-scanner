@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { Channels } from '../pages/Channels';
 import { useStore } from '../store/store';
 import type { CandidateChannel } from '../lib/types';
+
+function renderChannels(): void {
+  render(
+    <MemoryRouter>
+      <Channels />
+    </MemoryRouter>,
+  );
+}
 
 const CHANNEL: CandidateChannel = {
   id: 7,
@@ -30,7 +39,7 @@ afterEach(() => {
 describe('Channels table', () => {
   it('renders every contract column header', () => {
     useStore.getState().setChannels([CHANNEL]);
-    render(<Channels />);
+    renderChannels();
     const headerText = screen
       .getAllByRole('columnheader')
       .map((th) => th.textContent ?? '')
@@ -58,7 +67,7 @@ describe('Channels table', () => {
 
   it('renders a channel row with formatted values', () => {
     useStore.getState().setChannels([CHANNEL]);
-    render(<Channels />);
+    renderChannels();
     const row = screen.getByText('868.3000').closest('tr');
     expect(row).not.toBeNull();
     const cells = within(row as HTMLElement);
@@ -73,7 +82,7 @@ describe('Channels table', () => {
   });
 
   it('shows an empty state when there are no channels', () => {
-    render(<Channels />);
+    renderChannels();
     expect(screen.getByText(/No candidate channels detected yet/i)).toBeInTheDocument();
   });
 });

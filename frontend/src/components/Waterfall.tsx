@@ -3,10 +3,10 @@ import { useEffect, useRef } from 'react';
 export interface WaterfallProps {
   /** Latest row of power values (dB). Each new frame scrolls the image down. */
   powerDb: Float64Array | number[] | null;
-  /** dB value mapped to the bottom of the colormap. */
-  minDb?: number;
-  /** dB value mapped to the top of the colormap. */
-  maxDb?: number;
+  /** dB value mapped to the bottom of the colormap. Omit/undefined = autoscale. */
+  minDb?: number | undefined;
+  /** dB value mapped to the top of the colormap. Omit/undefined = autoscale. */
+  maxDb?: number | undefined;
   height?: number;
   paused?: boolean;
 }
@@ -27,13 +27,19 @@ function colormap(t: number): [number, number, number] {
  */
 export function Waterfall({
   powerDb,
-  minDb = -30,
-  maxDb = 40,
+  minDb,
+  maxDb,
   height = 220,
   paused = false,
 }: WaterfallProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<Float64Array | number[] | null>(null);
+  // Colour range lives in refs so changing it (noise floor drifts every frame)
+  // does NOT tear down and restart the requestAnimationFrame loop.
+  const minDbRef = useRef(minDb);
+  const maxDbRef = useRef(maxDb);
+  minDbRef.current = minDb;
+  maxDbRef.current = maxDb;
 
   // Track the latest frame; the RAF loop consumes it.
   if (!paused) lastFrameRef.current = powerDb;
@@ -57,15 +63,30 @@ export function Waterfall({
       if (canvas.width !== w) canvas.width = w;
       const h = canvas.height;
 
+      // Auto-scale the colour range to the data if explicit bounds were not
+      // supplied (guards against all-black when the dB range is misconfigured).
+      let lo = minDbRef.current ?? NaN;
+      let hi = maxDbRef.current ?? NaN;
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+        lo = Infinity;
+        hi = -Infinity;
+        for (let i = 0; i < w; i += 1) {
+          const v = frame[i] as number;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        if (hi <= lo) hi = lo + 1;
+      }
+
       // Scroll everything down by one row.
       ctx.drawImage(canvas, 0, 0, w, h - 1, 0, 1, w, h - 1);
 
       // Draw the new top row.
       const row = ctx.createImageData(w, 1);
-      const range = maxDb - minDb || 1;
+      const range = hi - lo || 1;
       for (let i = 0; i < w; i += 1) {
         const v = frame[i] as number;
-        const t = (v - minDb) / range;
+        const t = (v - lo) / range;
         const [r, g, b] = colormap(t);
         const o = i * 4;
         row.data[o] = r;
@@ -78,11 +99,16 @@ export function Waterfall({
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [paused, minDb, maxDb]);
+  }, [paused]);
 
   return (
     <div className="waterfall-wrap" style={{ height }}>
-      <canvas ref={canvasRef} height={height} style={{ height }} aria-label="Spectrogram waterfall" />
+      <canvas
+        ref={canvasRef}
+        height={height}
+        style={{ height, width: '100%' }}
+        aria-label="Spectrogram waterfall"
+      />
     </div>
   );
 }

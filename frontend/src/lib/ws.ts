@@ -140,6 +140,9 @@ function dispatch(msg: ServerMessage): void {
     case 'spectrum':
       store.setSpectrum(msg);
       break;
+    case 'scope':
+      store.pushScopeFrame(msg);
+      break;
     case 'channels':
       store.setChannels(msg.channels);
       break;
@@ -150,7 +153,7 @@ function dispatch(msg: ServerMessage): void {
       store.addEvent(msg.event);
       break;
     case 'status':
-      store.setStatus(msg.device, msg.metrics, msg.scanning);
+      store.setStatus(msg.device, msg.metrics, msg.scanning, msg.mode, msg.focus_center_hz);
       break;
     case 'config':
       store.setConfig(msg.config, msg.version, msg.changed_by);

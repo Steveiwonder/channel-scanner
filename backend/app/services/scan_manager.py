@@ -108,6 +108,8 @@ class ScanManager:
         self.metrics = ScanMetrics()
         self._last_spectrum_emit = 0.0
         self._last_snapshot_emit = 0.0
+        self._last_scope_emit = 0.0
+        self._scope_seq = 0
 
         # Stitched full-band spectrum. A swept receiver only sees one window at a
         # time, so we keep a persistent power buffer spanning the whole band and
@@ -212,6 +214,14 @@ class ScanManager:
         return self._scanning
 
     @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def focus_center_hz(self) -> int | None:
+        return self._focus_center
+
+    @property
     def backend(self) -> SdrBackend | None:
         return self._backend
 
@@ -305,6 +315,10 @@ class ScanManager:
         await self._broadcast_status()  # push idle state to all clients now
 
     async def focus(self, center_hz: int, span_hz: int | None, channel_id: int | None) -> None:
+        # Focus requires the scan loop running; start it if idle so the scope
+        # works straight from the Channels/Scope page without a separate start.
+        if not self._scanning:
+            await self.start_scan()
         self._mode = "focus"
         self._focus_center = int(center_hz)
         self._focus_span = int(span_hz) if span_hz else self._config.sample_rate
@@ -314,11 +328,14 @@ class ScanManager:
             data={"center_hz": center_hz, "span_hz": self._focus_span, "channel_id": channel_id},
         )
         log.info("scan.focus", center_hz=center_hz, span_hz=self._focus_span)
+        await self._broadcast_status()
 
     async def unfocus(self) -> None:
         self._mode = "sweep"
         self._focus_center = None
         self._focus_span = None
+        await self._emit_event("sweep", "resumed sweep")
+        await self._broadcast_status()
 
     # ------------------------------------------------------- config mutation
     async def update_config(
@@ -400,11 +417,14 @@ class ScanManager:
                     await asyncio.sleep(0.05)
                     continue
 
-                freqs, power_db = result
+                freqs, power_db, envelope_db = result
                 self.metrics.record_fft()
 
                 floor = self._noise.update(power_db)
                 await self._process_frame(freqs, power_db, floor, center, span)
+                # Live scope: fine spectrogram + envelope of the focused window.
+                if self._mode == "focus":
+                    self._maybe_emit_scope(freqs, power_db, envelope_db, floor, center, span)
 
                 # Advance sweep position.
                 if self._mode == "sweep":
@@ -425,8 +445,12 @@ class ScanManager:
         finally:
             log.info("scan.loop_exit")
 
-    def _read_and_psd(self, center: int, n: int) -> tuple[np.ndarray, np.ndarray]:
-        """Blocking: runs in executor thread. Returns (freqs_hz, power_db)."""
+    def _read_and_psd(self, center: int, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Blocking: runs in executor thread. Returns (freqs_hz, power_db, envelope_db).
+
+        envelope_db is the decimated |IQ| magnitude over the dwell, in dB, used for
+        the time-domain amplitude strip in the live scope.
+        """
         assert self._backend is not None
         self._backend.set_center_freq(center)
         iq = self._backend.read_iq(n)
@@ -436,7 +460,16 @@ class ScanManager:
             sample_rate=self._config.sample_rate,
             fft_size=self._config.fft_size,
         )
-        return result.freqs_hz, result.power_db
+        # Time-domain envelope: decimate |IQ| to a fixed number of points.
+        mag = np.abs(iq)
+        k = max(16, int(self._settings.scope_envelope_points))
+        if mag.size >= k:
+            trim = (mag.size // k) * k
+            env = mag[:trim].reshape(k, -1).mean(axis=1)
+        else:
+            env = mag
+        env_db = 20.0 * np.log10(env + 1e-12)
+        return result.freqs_hz, result.power_db, env_db
 
     async def _process_frame(
         self,
@@ -593,6 +626,43 @@ class ScanManager:
         }
         self._ws.broadcast_spectrum(payload)
 
+    def _maybe_emit_scope(
+        self,
+        freqs: np.ndarray,
+        power_db: np.ndarray,
+        envelope_db: np.ndarray,
+        floor: float,
+        center: int,
+        span: int,
+    ) -> None:
+        """Emit one fine-resolution spectrogram row + amplitude envelope for the
+        focused window (the live, triq-style scope). Throttled to scope_fps."""
+        now = time.monotonic()
+        min_interval = 1.0 / max(1, self._settings.scope_fps)
+        if now - self._last_scope_emit < min_interval:
+            return
+        self._last_scope_emit = now
+
+        row = psd_mod.reduce_bins(power_db, self._settings.scope_bins)
+        sr = int(self._config.sample_rate)
+        dwell_s = self._config.dwell_ms / 1000.0
+        env_dt_us = round(dwell_s * 1e6 / max(1, envelope_db.shape[0]), 3)
+        self._scope_seq += 1
+        payload = {
+            "center_hz": int(center),
+            "sample_rate": sr,
+            "f_start_hz": int(freqs[0]),
+            "f_stop_hz": int(freqs[-1]),
+            "bin_count": int(row.shape[0]),
+            "power_db": [round(float(x), 2) for x in row.tolist()],
+            "noise_floor_db": round(float(floor), 2),
+            "envelope": [round(float(x), 2) for x in envelope_db.tolist()],
+            "env_dt_us": env_dt_us,
+            "seq": self._scope_seq,
+            "t_ms": round(now * 1000.0, 1),
+        }
+        self._ws.broadcast_scope(payload)
+
     async def _maybe_emit_snapshot(self) -> None:
         now = time.monotonic()
         if now - self._last_snapshot_emit < 1.0:
@@ -610,8 +680,14 @@ class ScanManager:
         await self._broadcast_status()
 
     async def _broadcast_status(self) -> None:
-        """Broadcast device + live metrics + scanning state to all clients."""
-        self._ws.broadcast_status(self.device_info(), await self.metrics_dict(), self._scanning)
+        """Broadcast device + live metrics + scanning state + mode to all clients."""
+        self._ws.broadcast_status(
+            self.device_info(),
+            await self.metrics_dict(),
+            self._scanning,
+            mode=self._mode,
+            focus_center_hz=self._focus_center,
+        )
 
     # ------------------------------------------------------------ sweep math
     def _current_center(self) -> int:

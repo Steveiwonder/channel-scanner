@@ -9,6 +9,7 @@ import { api } from './lib/api';
 import { useStore } from './store/store';
 import { Dashboard } from './pages/Dashboard';
 import { Spectrum } from './pages/Spectrum';
+import { Scope } from './pages/Scope';
 import { Channels } from './pages/Channels';
 import { Timeline } from './pages/Timeline';
 import { Recordings } from './pages/Recordings';
@@ -83,6 +84,7 @@ export default function App(): JSX.Element {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/spectrum" element={<Spectrum />} />
+          <Route path="/scope" element={<Scope />} />
           <Route path="/channels" element={<Channels />} />
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/recordings" element={<Recordings />} />

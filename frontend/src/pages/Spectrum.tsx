@@ -131,7 +131,16 @@ export function Spectrum(): JSX.Element {
 
       <div className="card">
         <h2>Waterfall</h2>
-        <Waterfall powerDb={powerArr} paused={paused} height={240} minDb={-30} maxDb={40} />
+        {/* Colour range is anchored to the live noise floor so real RTL-SDR
+            power levels (~-120..-80 dBFS) map across the colormap instead of
+            clamping to black. */}
+        <Waterfall
+          powerDb={powerArr}
+          paused={paused}
+          height={240}
+          minDb={displayFrame ? displayFrame.noise_floor_db - 8 : undefined}
+          maxDb={displayFrame ? displayFrame.noise_floor_db + 55 : undefined}
+        />
         <div className="hint">Newest frames appear at the top and scroll down over time.</div>
       </div>
     </div>

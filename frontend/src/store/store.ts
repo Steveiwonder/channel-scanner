@@ -6,6 +6,8 @@ import type {
   DeviceInfo,
   Metrics,
   ScanConfig,
+  ScanMode,
+  ScopeFrame,
   SpectrumFrame,
 } from '../lib/types';
 import { getDisplayName, getOrCreateClientId, setDisplayName } from '../lib/identity';
@@ -35,14 +37,23 @@ export interface AppState {
   configChangedBy: string | null;
   setConfig: (config: ScanConfig, version: number, changedBy?: string | null) => void;
 
-  // device + metrics + scanning
+  // device + metrics + scanning + mode
   device: DeviceInfo | null;
   metrics: Metrics | null;
   scanning: boolean;
-  setStatus: (device: DeviceInfo, metrics: Metrics, scanning: boolean) => void;
+  mode: ScanMode;
+  focusCenterHz: number | null;
+  setStatus: (
+    device: DeviceInfo,
+    metrics: Metrics,
+    scanning: boolean,
+    mode?: ScanMode,
+    focusCenterHz?: number | null,
+  ) => void;
   setMetrics: (metrics: Metrics) => void;
   setDevice: (device: DeviceInfo) => void;
   setScanning: (scanning: boolean) => void;
+  setMode: (mode: ScanMode, focusCenterHz: number | null) => void;
 
   // channels (keyed by id)
   channels: Map<number, CandidateChannel>;
@@ -57,6 +68,11 @@ export interface AppState {
   // latest spectrum frame only (previous dropped)
   spectrum: SpectrumFrame | null;
   setSpectrum: (frame: SpectrumFrame) => void;
+
+  // latest scope frame only — the spectrogram history lives in the canvas, so
+  // the store never accumulates an unbounded array here.
+  scope: ScopeFrame | null;
+  pushScopeFrame: (frame: ScopeFrame) => void;
 
   // presence
   clients: ClientInfo[];
@@ -91,10 +107,14 @@ export const useStore = create<AppState>((set, get) => ({
   device: null,
   metrics: null,
   scanning: false,
-  setStatus: (device, metrics, scanning) => set({ device, metrics, scanning }),
+  mode: 'sweep',
+  focusCenterHz: null,
+  setStatus: (device, metrics, scanning, mode = 'sweep', focusCenterHz = null) =>
+    set({ device, metrics, scanning, mode, focusCenterHz }),
   setScanning: (scanning) => set({ scanning }),
   setMetrics: (metrics) => set({ metrics }),
   setDevice: (device) => set({ device }),
+  setMode: (mode, focusCenterHz) => set({ mode, focusCenterHz }),
 
   channels: new Map(),
   setChannels: (channels) => {
@@ -122,6 +142,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   spectrum: null,
   setSpectrum: (frame) => set({ spectrum: frame }),
+
+  scope: null,
+  pushScopeFrame: (frame) => set({ scope: frame }),
 
   clients: [],
   presenceCount: 0,

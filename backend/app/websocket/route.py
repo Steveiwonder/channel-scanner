@@ -60,6 +60,8 @@ async def ws_live(websocket: WebSocket) -> None:
             "device": ctx.scan_manager.device_info(),
             "metrics": await ctx.scan_manager.metrics_dict(),
             "scanning": ctx.scan_manager.scanning,
+            "mode": ctx.scan_manager.mode,
+            "focus_center_hz": ctx.scan_manager.focus_center_hz,
         }
     )
 

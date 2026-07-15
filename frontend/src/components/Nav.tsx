@@ -8,6 +8,7 @@ interface Route {
 const ROUTES: Route[] = [
   { to: '/', label: 'Dashboard' },
   { to: '/spectrum', label: 'Spectrum' },
+  { to: '/scope', label: 'Scope' },
   { to: '/channels', label: 'Channels' },
   { to: '/timeline', label: 'Timeline' },
   { to: '/recordings', label: 'Recordings' },
